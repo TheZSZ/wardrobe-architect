@@ -1,0 +1,42 @@
+# Cleanup commands:
+#   docker compose down              - Stop and remove containers
+#   docker compose down -v           - Also remove volumes
+#   docker images --filter "reference=wardrobe-architect-*" -q | xargs docker rmi  - Remove images
+
+services:
+  wardrobe-api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./images:/app/images
+    environment:
+      - API_KEY=${API_KEY}
+      - GOOGLE_SHEETS_CREDENTIALS_JSON=${GOOGLE_SHEETS_CREDENTIALS_JSON}
+      - GOOGLE_SHEET_ID=${GOOGLE_SHEET_ID}
+      - IMAGES_DIR=/app/images
+    restart: unless-stopped
+
+  test:
+    build: .
+    command: pytest
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
+      - ./pytest.ini:/app/pytest.ini
+      - ./.coveragerc:/app/.coveragerc
+    environment:
+      - API_KEY=test-key
+      - GOOGLE_SHEET_ID=test-sheet-id
+    profiles:
+      - test
+
+  lint:
+    build: .
+    command: flake8 app tests
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
+      - ./.flake8:/app/.flake8
+    profiles:
+      - lint

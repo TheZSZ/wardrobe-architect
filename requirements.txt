@@ -1,0 +1,18 @@
+# Core dependencies
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+gspread>=6.1.0
+google-auth>=2.36.0
+python-multipart>=0.0.18
+python-dotenv>=1.0.1
+pydantic-settings>=2.6.0
+
+# Testing dependencies
+pytest>=8.3.0
+pytest-cov>=6.0.0
+pytest-asyncio>=0.25.0
+pytest-sugar>=1.0.0
+httpx>=0.28.0
+
+# Linting
+flake8>=7.0.0
