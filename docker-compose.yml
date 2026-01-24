@@ -10,10 +10,12 @@ services:
       - "8000:8000"
     volumes:
       - ./images:/app/images
+      - ./htmlcov:/app/htmlcov:ro
     environment:
       - API_KEY=${API_KEY}
       - GOOGLE_SHEETS_CREDENTIALS_JSON=${GOOGLE_SHEETS_CREDENTIALS_JSON}
       - GOOGLE_SHEET_ID=${GOOGLE_SHEET_ID}
+      - DUMMY_MODE=${DUMMY_MODE:-false}
       - IMAGES_DIR=/app/images
     restart: unless-stopped
 
@@ -25,6 +27,7 @@ services:
       - ./tests:/app/tests
       - ./pytest.ini:/app/pytest.ini
       - ./.coveragerc:/app/.coveragerc
+      - ./htmlcov:/app/htmlcov
     environment:
       - API_KEY=test-key
       - GOOGLE_SHEET_ID=test-sheet-id

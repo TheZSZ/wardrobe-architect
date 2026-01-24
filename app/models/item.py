@@ -30,8 +30,15 @@ class WardrobeItem(WardrobeItemBase):
     id: str = Field(..., description="Unique identifier for the item")
 
 
+class CropRegion(BaseModel):
+    x: float = Field(..., description="X position as percentage (0-100)")
+    y: float = Field(..., description="Y position as percentage (0-100)")
+    size: float = Field(..., description="Size of square crop as percentage (0-100)")
+
+
 class ImageInfo(BaseModel):
     image_id: str = Field(..., description="Unique identifier for the image")
     item_id: str = Field(..., description="ID of the wardrobe item this image belongs to")
     filename: str = Field(..., description="Original filename")
     url: str = Field(..., description="URL to retrieve the image")
+    crop_region: Optional[CropRegion] = Field(None, description="Crop region for square thumbnail")

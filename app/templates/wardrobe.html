@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wardrobe Architect</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #f5f5f7;
+            min-height: 100vh;
+        }
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        header h1 {
+            font-size: 1.5rem;
+        }
+        .header-actions {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: transform 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-primary {
+            background: white;
+            color: #667eea;
+        }
+        .btn-secondary {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+        .item-actions .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .filters {
+            background: white;
+            padding: 1rem 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .filters select {
+            padding: 0.5rem 1rem;
+            border: 2px solid #e1e1e1;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            background: white;
+        }
+        .filters select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .items-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+        .item-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+        .item-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+        .item-image {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            background: #e1e1e1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 3rem;
+            overflow: hidden;
+            position: relative;
+        }
+        .item-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .carousel {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        .carousel img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: opacity 0.2s ease-in-out;
+        }
+        .carousel img.fade,
+        .carousel .cropped-thumb.fade {
+            opacity: 0;
+        }
+        .cropped-thumb {
+            transition: opacity 0.2s ease-in-out;
+        }
+        .carousel-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .item-image:hover .carousel-btn {
+            opacity: 1;
+        }
+        .carousel-btn:hover {
+            background: rgba(0,0,0,0.7);
+        }
+        .carousel-btn.prev {
+            left: 8px;
+        }
+        .carousel-btn.next {
+            right: 8px;
+        }
+        .carousel-dots {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 4px;
+        }
+        .carousel-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.5);
+        }
+        .carousel-dot.active {
+            background: white;
+        }
+        .image-count {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+        }
+        .item-details {
+            padding: 1.25rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .item-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        .item-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .tag {
+            padding: 0.25rem 0.75rem;
+            background: #f0f0f5;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: #555;
+        }
+        .tag.category { background: #e8f4fd; color: #1976d2; }
+        .tag.color { background: #fce8e8; color: #c62828; }
+        .tag.season { background: #e8f5e9; color: #2e7d32; }
+        .tag.fit { background: #fff3e0; color: #ef6c00; }
+        .item-notes {
+            font-size: 0.85rem;
+            color: #666;
+            font-style: italic;
+        }
+        .item-id {
+            font-size: 0.75rem;
+            color: #999;
+            font-family: monospace;
+            margin-top: 0.5rem;
+        }
+        .item-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: auto;
+            padding-top: 1rem;
+            border-top: 1px solid #eee;
+        }
+        .item-actions .btn {
+            flex: 1;
+            font-size: 0.8rem;
+        }
+        .btn-upload {
+            background: #17a2b8;
+            color: white;
+        }
+        .upload-input {
+            display: none;
+        }
+        /* Image Management Modal */
+        .image-modal-content {
+            max-width: 600px;
+        }
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            align-items: start;
+        }
+        .image-grid-item {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #e1e1e1;
+            cursor: grab;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .image-grid-item:active {
+            cursor: grabbing;
+        }
+        .image-grid-item.dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+        }
+        .image-grid-item.drag-over {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        .image-grid-item img {
+            width: 100%;
+            height: auto;
+            display: block;
+            pointer-events: none;
+        }
+        .image-order-badge {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .image-delete-btn {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: rgba(220, 53, 69, 0.9);
+            color: white;
+            border: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .image-grid-item:hover .image-delete-btn {
+            opacity: 1;
+        }
+        .image-delete-btn:hover {
+            background: #c82333;
+        }
+        .crop-edit-btn {
+            position: absolute;
+            bottom: 4px;
+            right: 4px;
+            background: rgba(102, 126, 234, 0.9);
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 10px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .image-grid-item:hover .crop-edit-btn {
+            opacity: 1;
+        }
+        .crop-edit-btn:hover {
+            background: #5a6fd6;
+        }
+        /* Crop Editor Modal */
+        .crop-editor-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        .crop-editor-modal.show {
+            display: flex;
+        }
+        .crop-editor-content {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            max-width: 90vw;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .crop-editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .crop-editor-header h3 {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+        .crop-editor-container {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+            max-height: 60vh;
+            overflow: hidden;
+        }
+        .crop-editor-container img {
+            display: block;
+            max-width: 100%;
+            max-height: 60vh;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+        .crop-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+        }
+        .crop-overlay::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+        }
+        .crop-box {
+            position: absolute;
+            border: 2px solid white;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+            cursor: move;
+            pointer-events: auto;
+        }
+        .crop-box::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border: 1px dashed rgba(255,255,255,0.5);
+        }
+        .crop-handle {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 50%;
+            pointer-events: auto;
+        }
+        .crop-handle.nw { top: -8px; left: -8px; cursor: nw-resize; }
+        .crop-handle.ne { top: -8px; right: -8px; cursor: ne-resize; }
+        .crop-handle.sw { bottom: -8px; left: -8px; cursor: sw-resize; }
+        .crop-handle.se { bottom: -8px; right: -8px; cursor: se-resize; }
+        .crop-editor-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+            justify-content: flex-end;
+        }
+        .crop-preview {
+            margin-top: 1rem;
+            text-align: center;
+        }
+        .crop-preview-label {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 0.5rem;
+        }
+        .crop-preview-box {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #e1e1e1;
+        }
+        .crop-preview-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .image-modal-empty {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+        .image-modal-actions {
+            display: flex;
+            justify-content: center;
+            padding-top: 1rem;
+            border-top: 1px solid #eee;
+        }
+        .item-image.clickable {
+            cursor: pointer;
+        }
+        .item-image.clickable:hover {
+            opacity: 0.9;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: #666;
+        }
+        .empty-state h2 {
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+        .empty-state .btn {
+            margin-top: 1rem;
+        }
+        .load-more {
+            text-align: center;
+            padding: 2rem;
+        }
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal.show {
+            display: flex;
+        }
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        .modal-header h2 {
+            font-size: 1.25rem;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #333;
+        }
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.625rem 0.875rem;
+            border: 2px solid #e1e1e1;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .form-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        .form-actions .btn {
+            flex: 1;
+        }
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: #333;
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            display: none;
+            z-index: 1001;
+        }
+        .toast.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Wardrobe Architect</h1>
+        <div class="header-actions">
+            <button class="btn btn-success" onclick="seedData()" id="seedBtn" style="display: none;">Load Sample Data</button>
+            <button class="btn btn-primary" onclick="openAddModal()">+ Add Item</button>
+            <button class="btn btn-secondary" onclick="logout()">Logout</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="filters">
+            <strong>Filter:</strong>
+            <select id="filterCategory" onchange="resetAndLoad()">
+                <option value="">All Categories</option>
+            </select>
+            <select id="filterColor" onchange="resetAndLoad()">
+                <option value="">All Colors</option>
+            </select>
+            <select id="filterSeason" onchange="resetAndLoad()">
+                <option value="">All Seasons</option>
+            </select>
+        </div>
+
+        <div class="items-grid" id="itemsGrid">
+            <!-- Items will be loaded here -->
+        </div>
+
+        <div class="loading" id="loading" style="display: none;">
+            Loading...
+        </div>
+
+        <div class="load-more" id="loadMore" style="display: none;">
+            <button class="btn btn-secondary" onclick="loadMoreItems()">Load More</button>
+        </div>
+
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <h2>No items found</h2>
+            <p id="emptyStateText">Add your first wardrobe item to get started!</p>
+            <button class="btn btn-success" onclick="seedData()" id="emptyStateSeedBtn" style="display: none;">Load Sample Data</button>
+        </div>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <div class="modal" id="itemModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Add Item</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="itemForm">
+                <input type="hidden" id="itemId">
+                <div class="form-group">
+                    <label for="itemName">Item Name</label>
+                    <input type="text" id="itemName" required placeholder="e.g., Blue Oxford Shirt">
+                </div>
+                <div class="form-group">
+                    <label for="itemCategory">Category</label>
+                    <select id="itemCategory" required>
+                        <option value="">Select category</option>
+                        <option value="Tops">Tops</option>
+                        <option value="Bottoms">Bottoms</option>
+                        <option value="Outerwear">Outerwear</option>
+                        <option value="Shoes">Shoes</option>
+                        <option value="Accessories">Accessories</option>
+                        <option value="Formal">Formal</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="itemColor">Color</label>
+                    <input type="text" id="itemColor" required placeholder="e.g., Navy Blue">
+                </div>
+                <div class="form-group">
+                    <label for="itemFit">Fit</label>
+                    <select id="itemFit" required>
+                        <option value="">Select fit</option>
+                        <option value="Slim">Slim</option>
+                        <option value="Regular">Regular</option>
+                        <option value="Relaxed">Relaxed</option>
+                        <option value="Oversized">Oversized</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="itemSeason">Season</label>
+                    <select id="itemSeason" required>
+                        <option value="">Select season</option>
+                        <option value="All">All Seasons</option>
+                        <option value="Spring">Spring</option>
+                        <option value="Summer">Summer</option>
+                        <option value="Fall">Fall</option>
+                        <option value="Winter">Winter</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="itemNotes">Notes (optional)</label>
+                    <textarea id="itemNotes" rows="3" placeholder="Any additional notes..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Item</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- Image Management Modal -->
+    <div class="modal" id="imageModal">
+        <div class="modal-content image-modal-content">
+            <div class="modal-header">
+                <h2 id="imageModalTitle">Manage Images</h2>
+                <button class="modal-close" onclick="closeImageModal()">&times;</button>
+            </div>
+            <div class="image-grid" id="imageGrid">
+                <!-- Images will be loaded here -->
+            </div>
+            <div class="image-modal-empty" id="imageModalEmpty" style="display: none;">
+                <p>No images yet. Upload one below!</p>
+            </div>
+            <div class="image-modal-actions">
+                <label class="btn btn-primary">
+                    Upload Image
+                    <input type="file" class="upload-input" accept="image/*" id="modalImageUpload">
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Crop Editor Modal -->
+    <div class="crop-editor-modal" id="cropEditorModal">
+        <div class="crop-editor-content">
+            <div class="crop-editor-header">
+                <h3>Adjust Thumbnail Crop</h3>
+                <button class="modal-close" onclick="closeCropEditor()">&times;</button>
+            </div>
+            <div class="crop-editor-container" id="cropEditorContainer">
+                <img id="cropEditorImage" src="" alt="Crop preview">
+                <div class="crop-box" id="cropBox">
+                    <div class="crop-handle nw" data-handle="nw"></div>
+                    <div class="crop-handle ne" data-handle="ne"></div>
+                    <div class="crop-handle sw" data-handle="sw"></div>
+                    <div class="crop-handle se" data-handle="se"></div>
+                </div>
+            </div>
+            <div class="crop-preview">
+                <div class="crop-preview-label">Preview</div>
+                <div class="crop-preview-box" id="cropPreviewBox"></div>
+            </div>
+            <div class="crop-editor-actions">
+                <button class="btn btn-secondary" onclick="closeCropEditor()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveCrop()">Save Crop</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const apiKey = localStorage.getItem('apiKey');
+        if (!apiKey) {
+            window.location.href = '/';
+        }
+
+        const headers = { 'X-API-Key': apiKey, 'Content-Type': 'application/json' };
+        let allItems = [];
+        let displayedItems = [];
+        let itemsPerPage = 12;
+        let currentPage = 0;
+        let isLoading = false;
+        let imageCache = {}; // Cache for loaded images
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        async function seedData() {
+            const btn = document.getElementById('seedBtn');
+            btn.disabled = true;
+            btn.textContent = 'Loading...';
+
+            try {
+                const response = await fetch('/items/seed', { method: 'POST', headers });
+                const data = await response.json();
+                showToast(data.message);
+                if (response.ok) {
+                    resetAndLoad();
+                }
+            } catch (err) {
+                showToast('Failed to load sample data');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Load Sample Data';
+            }
+        }
+
+        function resetAndLoad() {
+            currentPage = 0;
+            displayedItems = [];
+            document.getElementById('itemsGrid').innerHTML = '';
+            loadItems();
+        }
+
+        async function loadItems() {
+            if (isLoading) return;
+            isLoading = true;
+
+            const loading = document.getElementById('loading');
+            const loadMore = document.getElementById('loadMore');
+            loading.style.display = 'block';
+            loadMore.style.display = 'none';
+
+            const category = document.getElementById('filterCategory').value;
+            const color = document.getElementById('filterColor').value;
+            const season = document.getElementById('filterSeason').value;
+
+            let url = '/items?';
+            if (category) url += `category=${encodeURIComponent(category)}&`;
+            if (color) url += `color=${encodeURIComponent(color)}&`;
+            if (season) url += `season=${encodeURIComponent(season)}&`;
+
+            try {
+                const response = await fetch(url, { headers });
+                if (response.status === 401) {
+                    logout();
+                    return;
+                }
+                allItems = await response.json();
+                // Sort items by numeric portion of ID
+                allItems.sort((a, b) => {
+                    const numA = extractNumber(a.id);
+                    const numB = extractNumber(b.id);
+                    return numA - numB;
+                });
+                updateFilters(allItems);
+                renderNextPage();
+            } catch (err) {
+                console.error('Failed to load items:', err);
+            } finally {
+                loading.style.display = 'none';
+                isLoading = false;
+            }
+        }
+
+        async function renderNextPage() {
+            const grid = document.getElementById('itemsGrid');
+            const emptyState = document.getElementById('emptyState');
+            const loadMore = document.getElementById('loadMore');
+
+            if (allItems.length === 0) {
+                emptyState.style.display = 'block';
+                loadMore.style.display = 'none';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+
+            const start = currentPage * itemsPerPage;
+            const end = start + itemsPerPage;
+            const pageItems = allItems.slice(start, end);
+
+            if (pageItems.length === 0) {
+                loadMore.style.display = 'none';
+                return;
+            }
+
+            // Render items immediately with placeholder, then load images lazily
+            for (const item of pageItems) {
+                displayedItems.push(item);
+                const cardHtml = createItemCard(item, []);
+                grid.insertAdjacentHTML('beforeend', cardHtml);
+
+                // Load images lazily for this item
+                loadImagesForItem(item.id);
+            }
+
+            currentPage++;
+            loadMore.style.display = end < allItems.length ? 'block' : 'none';
+        }
+
+        async function loadImagesForItem(itemId) {
+            if (imageCache[itemId]) {
+                updateItemImages(itemId, imageCache[itemId]);
+                return;
+            }
+
+            try {
+                const response = await fetch(`/items/${itemId}/images`, { headers });
+                if (response.ok) {
+                    const images = await response.json();
+                    imageCache[itemId] = images;
+                    updateItemImages(itemId, images);
+                }
+            } catch (err) {
+                console.error('Failed to load images for item:', itemId, err);
+            }
+        }
+
+        function updateItemImages(itemId, images) {
+            const container = document.getElementById(`images-${itemId}`);
+            if (!container) return;
+
+            if (images.length === 0) {
+                container.innerHTML = '&#128085;';
+                return;
+            }
+
+            if (images.length === 1) {
+                container.innerHTML = createCroppedImage(images[0]);
+                return;
+            }
+
+            // Multiple images - create carousel
+            const dotsHtml = images.map((_, i) =>
+                `<span class="carousel-dot ${i === 0 ? 'active' : ''}" data-index="${i}"></span>`
+            ).join('');
+
+            container.innerHTML = `
+                <div class="carousel" data-item-id="${itemId}" data-current="0">
+                    ${createCroppedImage(images[0])}
+                    <button class="carousel-btn prev" onclick="event.stopPropagation(); carouselNav('${itemId}', -1)">&lt;</button>
+                    <button class="carousel-btn next" onclick="event.stopPropagation(); carouselNav('${itemId}', 1)">&gt;</button>
+                    <span class="image-count">1/${images.length}</span>
+                    <div class="carousel-dots">${dotsHtml}</div>
+                </div>
+            `;
+        }
+
+        function createCroppedImage(imageData) {
+            const crop = imageData.crop_region;
+            if (!crop) {
+                // No crop set - show full image with cover
+                return `<img src="${imageData.url}?api_key=${apiKey}" alt="Item image" loading="lazy" style="object-fit: cover; object-position: center;">`;
+            }
+
+            // Use CSS to show the cropped region
+            // Scale the image so the crop region fills the container
+            const scale = 100 / crop.size;
+            const offsetX = -crop.x * scale;
+            const offsetY = -crop.y * scale;
+
+            return `<div class="cropped-thumb" style="width:100%;height:100%;overflow:hidden;position:relative;">
+                <img src="${imageData.url}?api_key=${apiKey}" alt="Item image" loading="lazy"
+                    style="position:absolute;width:${scale * 100}%;height:${scale * 100}%;left:${offsetX}%;top:${offsetY}%;max-width:none;">
+            </div>`;
+        }
+
+        function carouselNav(itemId, direction) {
+            const images = imageCache[itemId];
+            if (!images || images.length <= 1) return;
+
+            const carousel = document.querySelector(`.carousel[data-item-id="${itemId}"]`);
+            if (!carousel) return;
+
+            let current = parseInt(carousel.dataset.current);
+            current = (current + direction + images.length) % images.length;
+            carousel.dataset.current = current;
+
+            const thumbContainer = carousel.querySelector('.cropped-thumb') || carousel.querySelector('img');
+
+            // Fade out, change image, fade in
+            thumbContainer.classList.add('fade');
+            setTimeout(() => {
+                // Replace the content with the new cropped image
+                const newContent = createCroppedImage(images[current]);
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = newContent;
+                const newThumb = tempDiv.firstElementChild;
+
+                if (carousel.querySelector('.cropped-thumb')) {
+                    carousel.querySelector('.cropped-thumb').replaceWith(newThumb);
+                } else {
+                    carousel.querySelector('img').replaceWith(newThumb);
+                }
+            }, 200);
+
+            const count = carousel.querySelector('.image-count');
+            count.textContent = `${current + 1}/${images.length}`;
+
+            const dots = carousel.querySelectorAll('.carousel-dot');
+            dots.forEach((dot, i) => dot.classList.toggle('active', i === current));
+        }
+
+        function loadMoreItems() {
+            renderNextPage();
+        }
+
+        function createItemCard(item, images) {
+            return `
+                <div class="item-card" data-item-id="${item.id}">
+                    <div class="item-image clickable" id="images-${item.id}" onclick="openImageModal('${item.id}')">
+                        &#128085;
+                    </div>
+                    <div class="item-details">
+                        <div class="item-name">${escapeHtml(item.item)}</div>
+                        <div class="item-meta">
+                            <span class="tag category">${escapeHtml(item.category)}</span>
+                            <span class="tag color">${escapeHtml(item.color)}</span>
+                            <span class="tag season">${escapeHtml(item.season)}</span>
+                            <span class="tag fit">${escapeHtml(item.fit)}</span>
+                        </div>
+                        ${item.notes ? `<div class="item-notes">${escapeHtml(item.notes)}</div>` : ''}
+                        <div class="item-id">ID: ${escapeHtml(item.id)}</div>
+                        <div class="item-actions">
+                            <label class="btn btn-upload">
+                                Upload
+                                <input type="file" class="upload-input" accept="image/*" onchange="uploadImage('${item.id}', this)">
+                            </label>
+                            <button class="btn btn-secondary" onclick="editItem('${item.id}')">Edit</button>
+                            <button class="btn btn-secondary" onclick="renameItem('${item.id}')">Rename</button>
+                            <button class="btn btn-danger" onclick="deleteItem('${item.id}')">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateFilters(items) {
+            const categories = [...new Set(items.map(i => i.category))].sort();
+            const colors = [...new Set(items.map(i => i.color))].sort();
+            const seasons = [...new Set(items.map(i => i.season))].sort();
+
+            updateFilterOptions('filterCategory', categories);
+            updateFilterOptions('filterColor', colors);
+            updateFilterOptions('filterSeason', seasons);
+        }
+
+        function updateFilterOptions(selectId, options) {
+            const select = document.getElementById(selectId);
+            const currentValue = select.value;
+            const firstOption = select.options[0].outerHTML;
+            select.innerHTML = firstOption + options.map(o =>
+                `<option value="${escapeHtml(o)}" ${o === currentValue ? 'selected' : ''}>${escapeHtml(o)}</option>`
+            ).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        function extractNumber(id) {
+            // Extract all digits from the ID and parse as a number
+            // e.g., "SH-BEIGE-02" -> 2, "TR-GRAY-15" -> 15, "item_pants_3" -> 3
+            const matches = id.match(/\d+/g);
+            if (!matches) return 0;
+            // Use the last number found (usually the sequence number)
+            return parseInt(matches[matches.length - 1], 10);
+        }
+
+        function openAddModal() {
+            document.getElementById('modalTitle').textContent = 'Add Item';
+            document.getElementById('itemForm').reset();
+            document.getElementById('itemId').value = '';
+            document.getElementById('itemModal').classList.add('show');
+        }
+
+        function editItem(id) {
+            const item = allItems.find(i => i.id === id);
+            if (!item) return;
+
+            document.getElementById('modalTitle').textContent = 'Edit Item';
+            document.getElementById('itemId').value = item.id;
+            document.getElementById('itemName').value = item.item;
+            document.getElementById('itemCategory').value = item.category;
+            document.getElementById('itemColor').value = item.color;
+            document.getElementById('itemFit').value = item.fit;
+            document.getElementById('itemSeason').value = item.season;
+            document.getElementById('itemNotes').value = item.notes || '';
+            document.getElementById('itemModal').classList.add('show');
+        }
+
+        function closeModal() {
+            document.getElementById('itemModal').classList.remove('show');
+        }
+
+        // Image Management Modal
+        let currentImageModalItemId = null;
+
+        function openImageModal(itemId) {
+            const item = allItems.find(i => i.id === itemId);
+            if (!item) return;
+
+            currentImageModalItemId = itemId;
+            document.getElementById('imageModalTitle').textContent = `Images: ${item.item}`;
+            document.getElementById('imageModal').classList.add('show');
+            renderImageGrid(itemId);
+        }
+
+        function closeImageModal() {
+            document.getElementById('imageModal').classList.remove('show');
+            currentImageModalItemId = null;
+        }
+
+        async function renderImageGrid(itemId) {
+            const grid = document.getElementById('imageGrid');
+            const emptyState = document.getElementById('imageModalEmpty');
+
+            // Force reload from server
+            delete imageCache[itemId];
+
+            try {
+                const response = await fetch(`/items/${itemId}/images`, { headers });
+                if (!response.ok) return;
+
+                const images = await response.json();
+                imageCache[itemId] = images;
+
+                if (images.length === 0) {
+                    grid.innerHTML = '';
+                    emptyState.style.display = 'block';
+                    return;
+                }
+
+                emptyState.style.display = 'none';
+                grid.innerHTML = images.map((img, index) => `
+                    <div class="image-grid-item" draggable="true" data-image-id="${img.image_id}" data-crop-region='${JSON.stringify(img.crop_region || null)}'>
+                        <span class="image-order-badge">${index + 1}</span>
+                        <img src="${img.url}?api_key=${apiKey}" alt="Item image">
+                        <button class="image-delete-btn" onclick="event.stopPropagation(); deleteImage('${img.image_id}', '${itemId}')" title="Delete image">&times;</button>
+                        <button class="crop-edit-btn" onclick="event.stopPropagation(); openCropEditor('${img.image_id}', '${img.url}')" title="Adjust crop">Crop</button>
+                    </div>
+                `).join('');
+
+                // Set up drag and drop
+                setupDragAndDrop(itemId);
+            } catch (err) {
+                console.error('Failed to load images:', err);
+            }
+        }
+
+        function setupDragAndDrop(itemId) {
+            const grid = document.getElementById('imageGrid');
+            const items = grid.querySelectorAll('.image-grid-item');
+            let draggedItem = null;
+
+            items.forEach(item => {
+                item.addEventListener('dragstart', (e) => {
+                    draggedItem = item;
+                    item.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+
+                item.addEventListener('dragend', () => {
+                    item.classList.remove('dragging');
+                    draggedItem = null;
+                    // Save new order
+                    saveImageOrder(itemId);
+                });
+
+                item.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (item !== draggedItem) {
+                        item.classList.add('drag-over');
+                    }
+                });
+
+                item.addEventListener('dragleave', () => {
+                    item.classList.remove('drag-over');
+                });
+
+                item.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    item.classList.remove('drag-over');
+                    if (item !== draggedItem && draggedItem) {
+                        // Reorder in DOM
+                        const allItems = [...grid.querySelectorAll('.image-grid-item')];
+                        const draggedIndex = allItems.indexOf(draggedItem);
+                        const dropIndex = allItems.indexOf(item);
+
+                        if (draggedIndex < dropIndex) {
+                            item.after(draggedItem);
+                        } else {
+                            item.before(draggedItem);
+                        }
+
+                        // Update order badges
+                        updateOrderBadges();
+                    }
+                });
+            });
+        }
+
+        function updateOrderBadges() {
+            const grid = document.getElementById('imageGrid');
+            const items = grid.querySelectorAll('.image-grid-item');
+            items.forEach((item, index) => {
+                const badge = item.querySelector('.image-order-badge');
+                if (badge) badge.textContent = index + 1;
+            });
+        }
+
+        async function saveImageOrder(itemId) {
+            const grid = document.getElementById('imageGrid');
+            const items = grid.querySelectorAll('.image-grid-item');
+            const imageIds = [...items].map(item => item.dataset.imageId);
+
+            try {
+                const response = await fetch(`/items/${itemId}/images/order`, {
+                    method: 'PUT',
+                    headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(imageIds)
+                });
+
+                if (response.ok) {
+                    showToast('Order saved');
+                    // Update cache and card
+                    delete imageCache[itemId];
+                    loadImagesForItem(itemId);
+                }
+            } catch (err) {
+                console.error('Failed to save order:', err);
+            }
+        }
+
+        // Crop Editor
+        let currentCropImageId = null;
+        let cropState = { x: 0, y: 0, size: 50 }; // percentages
+        let isDragging = false;
+        let isResizing = false;
+        let resizeHandle = null;
+        let dragStart = { x: 0, y: 0 };
+        let cropStart = { x: 0, y: 0, size: 50 };
+
+        function openCropEditor(imageId, imageUrl) {
+            currentCropImageId = imageId;
+            const modal = document.getElementById('cropEditorModal');
+            const img = document.getElementById('cropEditorImage');
+
+            // Find existing crop region if any
+            const gridItem = document.querySelector(`[data-image-id="${imageId}"]`);
+            const existingCrop = gridItem ? JSON.parse(gridItem.dataset.cropRegion || 'null') : null;
+
+            if (existingCrop) {
+                cropState = { x: existingCrop.x, y: existingCrop.y, size: existingCrop.size };
+            } else {
+                // Default: center crop that fits the image
+                cropState = { x: 25, y: 0, size: 50 };
+            }
+
+            img.onload = function() {
+                updateCropBox();
+                updateCropPreview();
+            };
+            img.src = `${imageUrl}?api_key=${apiKey}`;
+
+            modal.classList.add('show');
+            setupCropHandlers();
+        }
+
+        function closeCropEditor() {
+            document.getElementById('cropEditorModal').classList.remove('show');
+            currentCropImageId = null;
+            removeCropHandlers();
+        }
+
+        function setupCropHandlers() {
+            const cropBox = document.getElementById('cropBox');
+            const container = document.getElementById('cropEditorContainer');
+
+            cropBox.addEventListener('mousedown', onCropMouseDown);
+            document.addEventListener('mousemove', onCropMouseMove);
+            document.addEventListener('mouseup', onCropMouseUp);
+
+            // Touch support
+            cropBox.addEventListener('touchstart', onCropTouchStart, { passive: false });
+            document.addEventListener('touchmove', onCropTouchMove, { passive: false });
+            document.addEventListener('touchend', onCropMouseUp);
+        }
+
+        function removeCropHandlers() {
+            const cropBox = document.getElementById('cropBox');
+            cropBox.removeEventListener('mousedown', onCropMouseDown);
+            document.removeEventListener('mousemove', onCropMouseMove);
+            document.removeEventListener('mouseup', onCropMouseUp);
+            cropBox.removeEventListener('touchstart', onCropTouchStart);
+            document.removeEventListener('touchmove', onCropTouchMove);
+            document.removeEventListener('touchend', onCropMouseUp);
+        }
+
+        function onCropMouseDown(e) {
+            e.preventDefault();
+            const handle = e.target.dataset.handle;
+            const container = document.getElementById('cropEditorContainer');
+            const rect = container.getBoundingClientRect();
+
+            if (handle) {
+                isResizing = true;
+                resizeHandle = handle;
+            } else {
+                isDragging = true;
+            }
+
+            dragStart = {
+                x: (e.clientX - rect.left) / rect.width * 100,
+                y: (e.clientY - rect.top) / rect.height * 100
+            };
+            cropStart = { ...cropState };
+        }
+
+        function onCropTouchStart(e) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const handle = e.target.dataset.handle;
+            const container = document.getElementById('cropEditorContainer');
+            const rect = container.getBoundingClientRect();
+
+            if (handle) {
+                isResizing = true;
+                resizeHandle = handle;
+            } else {
+                isDragging = true;
+            }
+
+            dragStart = {
+                x: (touch.clientX - rect.left) / rect.width * 100,
+                y: (touch.clientY - rect.top) / rect.height * 100
+            };
+            cropStart = { ...cropState };
+        }
+
+        function onCropMouseMove(e) {
+            if (!isDragging && !isResizing) return;
+
+            const container = document.getElementById('cropEditorContainer');
+            const rect = container.getBoundingClientRect();
+            const currentX = (e.clientX - rect.left) / rect.width * 100;
+            const currentY = (e.clientY - rect.top) / rect.height * 100;
+
+            processCropMove(currentX, currentY);
+        }
+
+        function onCropTouchMove(e) {
+            if (!isDragging && !isResizing) return;
+            e.preventDefault();
+
+            const touch = e.touches[0];
+            const container = document.getElementById('cropEditorContainer');
+            const rect = container.getBoundingClientRect();
+            const currentX = (touch.clientX - rect.left) / rect.width * 100;
+            const currentY = (touch.clientY - rect.top) / rect.height * 100;
+
+            processCropMove(currentX, currentY);
+        }
+
+        function processCropMove(currentX, currentY) {
+            const dx = currentX - dragStart.x;
+            const dy = currentY - dragStart.y;
+
+            if (isDragging) {
+                // Move the crop box
+                let newX = cropStart.x + dx;
+                let newY = cropStart.y + dy;
+
+                // Constrain to image bounds
+                newX = Math.max(0, Math.min(100 - cropState.size, newX));
+                newY = Math.max(0, Math.min(100 - cropState.size, newY));
+
+                cropState.x = newX;
+                cropState.y = newY;
+            } else if (isResizing) {
+                // Resize the crop box (maintain square)
+                let delta;
+                if (resizeHandle === 'se') {
+                    delta = Math.max(dx, dy);
+                } else if (resizeHandle === 'nw') {
+                    delta = -Math.max(-dx, -dy);
+                } else if (resizeHandle === 'ne') {
+                    delta = Math.max(dx, -dy);
+                } else if (resizeHandle === 'sw') {
+                    delta = Math.max(-dx, dy);
+                }
+
+                let newSize = cropStart.size + delta;
+                newSize = Math.max(10, Math.min(100, newSize)); // Min 10%, max 100%
+
+                // Adjust position for corner handles
+                if (resizeHandle === 'nw') {
+                    const sizeDiff = cropStart.size - newSize;
+                    cropState.x = Math.max(0, cropStart.x + sizeDiff);
+                    cropState.y = Math.max(0, cropStart.y + sizeDiff);
+                } else if (resizeHandle === 'ne') {
+                    const sizeDiff = cropStart.size - newSize;
+                    cropState.y = Math.max(0, cropStart.y + sizeDiff);
+                } else if (resizeHandle === 'sw') {
+                    const sizeDiff = cropStart.size - newSize;
+                    cropState.x = Math.max(0, cropStart.x + sizeDiff);
+                }
+
+                // Constrain size to fit within bounds
+                if (cropState.x + newSize > 100) newSize = 100 - cropState.x;
+                if (cropState.y + newSize > 100) newSize = 100 - cropState.y;
+
+                cropState.size = newSize;
+            }
+
+            updateCropBox();
+            updateCropPreview();
+        }
+
+        function onCropMouseUp() {
+            isDragging = false;
+            isResizing = false;
+            resizeHandle = null;
+        }
+
+        function updateCropBox() {
+            const cropBox = document.getElementById('cropBox');
+            cropBox.style.left = cropState.x + '%';
+            cropBox.style.top = cropState.y + '%';
+            cropBox.style.width = cropState.size + '%';
+            cropBox.style.height = cropState.size + '%';
+        }
+
+        function updateCropPreview() {
+            const previewBox = document.getElementById('cropPreviewBox');
+            const img = document.getElementById('cropEditorImage');
+
+            // Calculate the scale to show the cropped region in the preview box
+            const scale = 100 / cropState.size;
+            const offsetX = -cropState.x * scale;
+            const offsetY = -cropState.y * scale;
+
+            previewBox.innerHTML = `<img src="${img.src}" style="
+                width: ${scale * 100}%;
+                height: ${scale * 100}%;
+                object-fit: cover;
+                object-position: ${offsetX}% ${offsetY}%;
+                transform: translate(${offsetX}%, ${offsetY}%);
+            ">`;
+
+            // Alternative approach using clip-path simulation
+            previewBox.innerHTML = '';
+            const previewImg = document.createElement('img');
+            previewImg.src = img.src;
+            previewImg.style.cssText = `
+                position: absolute;
+                width: ${100 / cropState.size * 100}%;
+                height: ${100 / cropState.size * 100}%;
+                left: ${-cropState.x / cropState.size * 100}%;
+                top: ${-cropState.y / cropState.size * 100}%;
+                max-width: none;
+            `;
+            previewBox.style.position = 'relative';
+            previewBox.style.overflow = 'hidden';
+            previewBox.appendChild(previewImg);
+        }
+
+        async function saveCrop() {
+            if (!currentCropImageId) return;
+
+            try {
+                const response = await fetch(`/images/${currentCropImageId}/crop`, {
+                    method: 'PUT',
+                    headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        x: Math.round(cropState.x * 100) / 100,
+                        y: Math.round(cropState.y * 100) / 100,
+                        size: Math.round(cropState.size * 100) / 100
+                    })
+                });
+
+                if (response.ok) {
+                    showToast('Crop saved');
+                    closeCropEditor();
+                    // Update cache and card
+                    if (currentImageModalItemId) {
+                        delete imageCache[currentImageModalItemId];
+                        loadImagesForItem(currentImageModalItemId);
+                        renderImageGrid(currentImageModalItemId);
+                    }
+                } else {
+                    const data = await response.json();
+                    showToast(data.detail || 'Failed to save crop');
+                }
+            } catch (err) {
+                console.error('Failed to save crop:', err);
+                showToast('Failed to save crop');
+            }
+        }
+
+        async function deleteImage(imageId, itemId) {
+            if (!confirm('Delete this image?')) return;
+
+            try {
+                const response = await fetch(`/images/${imageId}`, {
+                    method: 'DELETE',
+                    headers: { 'X-API-Key': apiKey }
+                });
+
+                if (response.ok) {
+                    showToast('Image deleted');
+                    // Refresh the modal grid
+                    renderImageGrid(itemId);
+                    // Also update the card on the main page
+                    delete imageCache[itemId];
+                    loadImagesForItem(itemId);
+                } else {
+                    showToast('Failed to delete image');
+                }
+            } catch (err) {
+                console.error('Failed to delete image:', err);
+                showToast('Failed to delete image');
+            }
+        }
+
+        // Set up modal upload handler
+        document.getElementById('modalImageUpload').addEventListener('change', async function() {
+            if (!currentImageModalItemId) return;
+
+            const file = this.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch(`/items/${currentImageModalItemId}/images`, {
+                    method: 'POST',
+                    headers: { 'X-API-Key': apiKey },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    showToast('Image uploaded');
+                    renderImageGrid(currentImageModalItemId);
+                    // Also update card
+                    delete imageCache[currentImageModalItemId];
+                    loadImagesForItem(currentImageModalItemId);
+                } else {
+                    const data = await response.json();
+                    showToast(data.detail || 'Upload failed');
+                }
+            } catch (err) {
+                showToast('Upload failed');
+            }
+
+            this.value = '';
+        });
+
+        async function uploadImage(itemId, input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch(`/items/${itemId}/images`, {
+                    method: 'POST',
+                    headers: { 'X-API-Key': apiKey },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    showToast('Image uploaded');
+                    // Clear cache and reload images for this item
+                    delete imageCache[itemId];
+                    loadImagesForItem(itemId);
+                } else {
+                    const data = await response.json();
+                    showToast(data.detail || 'Upload failed');
+                }
+            } catch (err) {
+                console.error('Failed to upload image:', err);
+                showToast('Upload failed');
+            }
+
+            // Reset input so same file can be uploaded again
+            input.value = '';
+        }
+
+        async function deleteItem(id) {
+            if (!confirm('Are you sure you want to delete this item?')) return;
+
+            try {
+                const response = await fetch(`/items/${id}`, { method: 'DELETE', headers });
+                if (response.ok) {
+                    // Remove from cache
+                    delete imageCache[id];
+                    showToast('Item deleted');
+                    resetAndLoad();
+                }
+            } catch (err) {
+                console.error('Failed to delete item:', err);
+            }
+        }
+
+        async function renameItem(oldId) {
+            const newId = prompt(`Enter new ID for "${oldId}":`, oldId);
+            if (!newId || newId === oldId) return;
+
+            // Basic validation
+            if (/[/\\<>:"|?*]/.test(newId)) {
+                showToast('ID contains invalid characters');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/items/${encodeURIComponent(oldId)}/rename`, {
+                    method: 'PUT',
+                    headers,
+                    body: JSON.stringify({ new_id: newId })
+                });
+
+                if (response.ok) {
+                    // Move image cache to new ID
+                    if (imageCache[oldId]) {
+                        imageCache[newId] = imageCache[oldId];
+                        delete imageCache[oldId];
+                    }
+                    showToast(`Renamed to ${newId}`);
+                    resetAndLoad();
+                } else {
+                    const data = await response.json();
+                    showToast(data.detail || 'Rename failed');
+                }
+            } catch (err) {
+                console.error('Failed to rename item:', err);
+                showToast('Rename failed');
+            }
+        }
+
+        document.getElementById('itemForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const id = document.getElementById('itemId').value;
+            const data = {
+                item: document.getElementById('itemName').value,
+                category: document.getElementById('itemCategory').value,
+                color: document.getElementById('itemColor').value,
+                fit: document.getElementById('itemFit').value,
+                season: document.getElementById('itemSeason').value,
+                notes: document.getElementById('itemNotes').value || null
+            };
+
+            try {
+                const url = id ? `/items/${id}` : '/items';
+                const method = id ? 'PUT' : 'POST';
+                const response = await fetch(url, {
+                    method,
+                    headers,
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    closeModal();
+                    showToast(id ? 'Item updated' : 'Item created');
+                    resetAndLoad();
+                }
+            } catch (err) {
+                console.error('Failed to save item:', err);
+            }
+        });
+
+        function logout() {
+            localStorage.removeItem('apiKey');
+            window.location.href = '/';
+        }
+
+        // Check if dummy mode and show seed buttons
+        async function checkDummyMode() {
+            try {
+                const response = await fetch('/config');
+                if (response.ok) {
+                    const config = await response.json();
+                    if (config.dummy_mode) {
+                        document.getElementById('seedBtn').style.display = 'inline-block';
+                        document.getElementById('emptyStateSeedBtn').style.display = 'inline-block';
+                        document.getElementById('emptyStateText').textContent = 'Add your first wardrobe item or load sample data to get started!';
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to check config:', err);
+            }
+        }
+
+        // Initial load
+        checkDummyMode();
+        loadItems();
+    </script>
+</body>
+</html>

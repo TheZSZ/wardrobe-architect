@@ -71,4 +71,5 @@ class TestAPIKeyAuthentication:
 
     def test_missing_api_key(self, auth_client):
         response = auth_client.get("/items")
-        assert response.status_code == 422  # Validation error for missing header
+        assert response.status_code == 401  # Missing API key returns 401
+        assert "Missing API key" in response.json()["detail"]

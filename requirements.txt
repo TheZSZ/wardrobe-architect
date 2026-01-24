@@ -6,6 +6,7 @@ google-auth>=2.36.0
 python-multipart>=0.0.18
 python-dotenv>=1.0.1
 pydantic-settings>=2.6.0
+slowapi>=0.1.9
 
 # Testing dependencies
 pytest>=8.3.0

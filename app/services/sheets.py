@@ -173,12 +173,120 @@ class SheetsService:
         sheet.delete_rows(row_index)
         return True
 
+    def rename_item_id(self, old_id: str, new_id: str) -> bool:
+        """Rename an item's ID. Returns False if old_id not found or new_id exists."""
+        # Check if new_id already exists
+        if self.get_item_by_id(new_id) is not None:
+            return False
+
+        row_index = self._find_row_by_id(old_id)
+        if row_index is None:
+            return False
+
+        sheet = self._get_sheet()
+        sheet.update_cell(row_index, COLUMNS["id"], new_id)
+        return True
+
+
+SAMPLE_ITEMS = [
+    {"item": "Navy Oxford Shirt", "category": "Tops", "color": "Navy Blue", "fit": "Slim", "season": "All", "notes": "Classic work shirt"},
+    {"item": "White T-Shirt", "category": "Tops", "color": "White", "fit": "Regular", "season": "Summer", "notes": "Basic essential"},
+    {"item": "Black Jeans", "category": "Bottoms", "color": "Black", "fit": "Slim", "season": "All", "notes": None},
+    {"item": "Khaki Chinos", "category": "Bottoms", "color": "Khaki", "fit": "Regular", "season": "All", "notes": "Business casual"},
+    {"item": "Grey Wool Sweater", "category": "Tops", "color": "Grey", "fit": "Regular", "season": "Winter", "notes": "Merino wool"},
+    {"item": "Leather Jacket", "category": "Outerwear", "color": "Brown", "fit": "Regular", "season": "Fall", "notes": "Vintage style"},
+    {"item": "Running Shoes", "category": "Shoes", "color": "Black", "fit": "Regular", "season": "All", "notes": "Nike Air Max"},
+    {"item": "Dress Shoes", "category": "Shoes", "color": "Brown", "fit": "Regular", "season": "All", "notes": "Oxford style"},
+    {"item": "Denim Jacket", "category": "Outerwear", "color": "Blue", "fit": "Regular", "season": "Spring", "notes": "Light wash"},
+    {"item": "Wool Coat", "category": "Outerwear", "color": "Charcoal", "fit": "Regular", "season": "Winter", "notes": "Long overcoat"},
+]
+
+
+class MockSheetsService:
+    """In-memory mock service for dummy mode testing."""
+
+    def __init__(self):
+        self._items: dict[str, dict] = {}
+        self._next_id = 1
+
+    def seed_sample_data(self) -> int:
+        """Populate with sample clothing items. Returns count of items added."""
+        if self._items:
+            return 0  # Don't seed if items already exist
+        for item_data in SAMPLE_ITEMS:
+            self.create_item(WardrobeItemCreate(**item_data))
+        return len(SAMPLE_ITEMS)
+
+    def get_all_items(
+        self,
+        category: Optional[str] = None,
+        color: Optional[str] = None,
+        season: Optional[str] = None,
+    ) -> list[WardrobeItem]:
+        items = []
+        for item_data in self._items.values():
+            item = WardrobeItem(**item_data)
+            if category and item.category.lower() != category.lower():
+                continue
+            if color and item.color.lower() != color.lower():
+                continue
+            if season and item.season.lower() != season.lower():
+                continue
+            items.append(item)
+        return items
+
+    def get_item_by_id(self, item_id: str) -> Optional[WardrobeItem]:
+        item_data = self._items.get(item_id)
+        if item_data:
+            return WardrobeItem(**item_data)
+        return None
+
+    def create_item(self, item_data: WardrobeItemCreate) -> WardrobeItem:
+        new_id = str(self._next_id)
+        self._next_id += 1
+        item_dict = {"id": new_id, **item_data.model_dump()}
+        self._items[new_id] = item_dict
+        return WardrobeItem(**item_dict)
+
+    def update_item(self, item_id: str, item_data: WardrobeItemUpdate) -> Optional[WardrobeItem]:
+        if item_id not in self._items:
+            return None
+        update_data = item_data.model_dump(exclude_unset=True)
+        self._items[item_id].update(update_data)
+        return WardrobeItem(**self._items[item_id])
+
+    def delete_item(self, item_id: str) -> bool:
+        if item_id not in self._items:
+            return False
+        del self._items[item_id]
+        return True
+
+    def rename_item_id(self, old_id: str, new_id: str) -> bool:
+        """Rename an item's ID. Returns False if old_id not found or new_id exists."""
+        if new_id in self._items:
+            return False
+        if old_id not in self._items:
+            return False
+
+        # Move item data to new key
+        item_data = self._items.pop(old_id)
+        item_data["id"] = new_id
+        self._items[new_id] = item_data
+        return True
+
 
 _sheets_service: Optional[SheetsService] = None
+_mock_service: Optional[MockSheetsService] = None
 
 
-def get_sheets_service(settings: Settings) -> SheetsService:
-    global _sheets_service
+def get_sheets_service(settings: Settings) -> SheetsService | MockSheetsService:
+    global _sheets_service, _mock_service
+
+    if settings.dummy_mode:
+        if _mock_service is None:
+            _mock_service = MockSheetsService()
+        return _mock_service
+
     if _sheets_service is None:
         _sheets_service = SheetsService(settings)
     return _sheets_service

@@ -257,3 +257,39 @@ class TestDeleteItem:
 
         assert result is False
         mock_worksheet.delete_rows.assert_not_called()
+
+
+class TestRenameItemId:
+    def test_rename_success(self, sheets_service, mock_worksheet):
+        mock_worksheet.get_all_values.return_value = [
+            ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
+            ["old_id", "Shirt", "Tops", "Blue", "Slim", "All", ""],
+        ]
+
+        result = sheets_service.rename_item_id("old_id", "new_id")
+
+        assert result is True
+        mock_worksheet.update_cell.assert_called_once_with(2, COLUMNS["id"], "new_id")
+
+    def test_rename_old_id_not_found(self, sheets_service, mock_worksheet):
+        mock_worksheet.get_all_values.return_value = [
+            ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
+            ["1", "Shirt", "Tops", "Blue", "Slim", "All", ""],
+        ]
+
+        result = sheets_service.rename_item_id("nonexistent", "new_id")
+
+        assert result is False
+        mock_worksheet.update_cell.assert_not_called()
+
+    def test_rename_new_id_already_exists(self, sheets_service, mock_worksheet):
+        mock_worksheet.get_all_values.return_value = [
+            ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
+            ["old_id", "Shirt", "Tops", "Blue", "Slim", "All", ""],
+            ["new_id", "Pants", "Bottoms", "Black", "Regular", "All", ""],
+        ]
+
+        result = sheets_service.rename_item_id("old_id", "new_id")
+
+        assert result is False
+        mock_worksheet.update_cell.assert_not_called()

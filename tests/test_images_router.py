@@ -177,3 +177,101 @@ class TestMultipleImages:
         list_response = client.get("/items/1/images")
         assert response.status_code == 201
         assert len(list_response.json()) == 3
+
+
+class TestCropRegion:
+    def test_set_crop_region_success(
+        self, client, mock_sheets_service, storage_service, sample_image_bytes
+    ):
+        # First upload an image
+        mock_sheets_service.get_item_by_id.return_value = WardrobeItem(
+            id="1",
+            item="Shirt",
+            category="Tops",
+            color="Blue",
+            fit="Slim",
+            season="All",
+        )
+
+        upload_response = client.post(
+            "/items/1/images",
+            files={"file": ("test.png", BytesIO(sample_image_bytes), "image/png")},
+        )
+        image_id = upload_response.json()["image_id"]
+
+        # Set crop region
+        response = client.put(
+            f"/images/{image_id}/crop",
+            json={"x": 10, "y": 20, "size": 50},
+        )
+
+        assert response.status_code == 200
+        assert "updated" in response.json()["message"].lower()
+
+    def test_set_crop_region_image_not_found(self, client, storage_service):
+        response = client.put(
+            "/images/nonexistent/crop",
+            json={"x": 10, "y": 20, "size": 50},
+        )
+
+        assert response.status_code == 404
+
+    def test_set_crop_region_invalid_values(
+        self, client, mock_sheets_service, storage_service, sample_image_bytes
+    ):
+        # First upload an image
+        mock_sheets_service.get_item_by_id.return_value = WardrobeItem(
+            id="1",
+            item="Shirt",
+            category="Tops",
+            color="Blue",
+            fit="Slim",
+            season="All",
+        )
+
+        upload_response = client.post(
+            "/items/1/images",
+            files={"file": ("test.png", BytesIO(sample_image_bytes), "image/png")},
+        )
+        image_id = upload_response.json()["image_id"]
+
+        # Try invalid crop (x + size > 100)
+        response = client.put(
+            f"/images/{image_id}/crop",
+            json={"x": 80, "y": 0, "size": 30},
+        )
+
+        assert response.status_code == 400
+        assert "invalid" in response.json()["detail"].lower()
+
+    def test_crop_region_included_in_list(
+        self, client, mock_sheets_service, storage_service, sample_image_bytes
+    ):
+        # Upload an image
+        mock_sheets_service.get_item_by_id.return_value = WardrobeItem(
+            id="1",
+            item="Shirt",
+            category="Tops",
+            color="Blue",
+            fit="Slim",
+            season="All",
+        )
+
+        upload_response = client.post(
+            "/items/1/images",
+            files={"file": ("test.png", BytesIO(sample_image_bytes), "image/png")},
+        )
+        image_id = upload_response.json()["image_id"]
+
+        # Set crop region
+        client.put(
+            f"/images/{image_id}/crop",
+            json={"x": 25, "y": 25, "size": 50},
+        )
+
+        # List images should include crop region
+        list_response = client.get("/items/1/images")
+        assert list_response.status_code == 200
+        images = list_response.json()
+        assert len(images) == 1
+        assert images[0]["crop_region"] == {"x": 25, "y": 25, "size": 50}

@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.config import Settings, get_settings
-from app.auth import verify_api_key
+from app.auth import verify_api_key, verify_api_key_or_query
 from app.services.sheets import SheetsService
 from app.services.storage import StorageService
 from app.routers.items import get_sheets as items_get_sheets, get_storage as items_get_storage
@@ -58,6 +58,7 @@ def client(test_settings, mock_sheets_service, storage_service):
 
     app.dependency_overrides[get_settings] = override_settings
     app.dependency_overrides[verify_api_key] = override_api_key
+    app.dependency_overrides[verify_api_key_or_query] = override_api_key
     # Override router-level dependencies
     app.dependency_overrides[items_get_sheets] = override_sheets
     app.dependency_overrides[items_get_storage] = override_storage

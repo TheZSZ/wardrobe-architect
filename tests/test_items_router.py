@@ -179,3 +179,100 @@ class TestDeleteItem:
         response = client.delete("/items/999")
 
         assert response.status_code == 404
+
+
+class TestRenameItemId:
+    def test_rename_item_success(self, client, mock_sheets_service, storage_service):
+        mock_sheets_service.get_item_by_id.return_value = WardrobeItem(
+            id="old_id",
+            item="Shirt",
+            category="Tops",
+            color="Blue",
+            fit="Slim",
+            season="All",
+        )
+        mock_sheets_service.rename_item_id.return_value = True
+        storage_service.rename_item_folder = lambda old, new: True
+
+        # After rename, get_item_by_id should return the updated item
+        def get_item_side_effect(item_id):
+            if item_id == "new_id":
+                return WardrobeItem(
+                    id="new_id",
+                    item="Shirt",
+                    category="Tops",
+                    color="Blue",
+                    fit="Slim",
+                    season="All",
+                )
+            return WardrobeItem(
+                id="old_id",
+                item="Shirt",
+                category="Tops",
+                color="Blue",
+                fit="Slim",
+                season="All",
+            )
+
+        mock_sheets_service.get_item_by_id.side_effect = get_item_side_effect
+
+        response = client.put("/items/old_id/rename", json={"new_id": "new_id"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == "new_id"
+
+    def test_rename_item_not_found(self, client, mock_sheets_service):
+        mock_sheets_service.get_item_by_id.return_value = None
+
+        response = client.put("/items/nonexistent/rename", json={"new_id": "new_id"})
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"]
+
+    def test_rename_item_empty_new_id(self, client, mock_sheets_service):
+        mock_sheets_service.get_item_by_id.return_value = WardrobeItem(
+            id="old_id",
+            item="Shirt",
+            category="Tops",
+            color="Blue",
+            fit="Slim",
+            season="All",
+        )
+
+        response = client.put("/items/old_id/rename", json={"new_id": ""})
+
+        assert response.status_code == 400
+        assert "empty" in response.json()["detail"].lower()
+
+    def test_rename_item_invalid_characters(self, client, mock_sheets_service):
+        mock_sheets_service.get_item_by_id.return_value = WardrobeItem(
+            id="old_id",
+            item="Shirt",
+            category="Tops",
+            color="Blue",
+            fit="Slim",
+            season="All",
+        )
+
+        response = client.put("/items/old_id/rename", json={"new_id": "bad/id"})
+
+        assert response.status_code == 400
+        assert "invalid characters" in response.json()["detail"].lower()
+
+    def test_rename_item_new_id_exists(self, client, mock_sheets_service, storage_service):
+        mock_sheets_service.get_item_by_id.return_value = WardrobeItem(
+            id="old_id",
+            item="Shirt",
+            category="Tops",
+            color="Blue",
+            fit="Slim",
+            season="All",
+        )
+        # rename_item_id returns False when new_id already exists
+        mock_sheets_service.rename_item_id.return_value = False
+
+        response = client.put("/items/old_id/rename", json={"new_id": "existing_id"})
+
+        assert response.status_code == 400
+        assert "already exists" in response.json()["detail"].lower()
