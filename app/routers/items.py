@@ -4,7 +4,7 @@ from typing import Optional
 from app.auth import verify_api_key
 from app.config import Settings, get_settings
 from app.models.item import WardrobeItem, WardrobeItemCreate, WardrobeItemUpdate
-from app.services.sheets import SheetsService, MockSheetsService, get_sheets_service
+from app.services.sheets import SheetsService, DummyModeService, get_sheets_service
 from app.services.storage import StorageService, get_storage_service
 
 router = APIRouter(prefix="/items", tags=["Items"])
@@ -154,7 +154,7 @@ async def seed_sample_data(
     _: str = Depends(verify_api_key),
 ):
     """Seed sample clothing items (dummy mode only)."""
-    if not isinstance(sheets, MockSheetsService):
+    if not isinstance(sheets, DummyModeService):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Seeding is only available in dummy mode",

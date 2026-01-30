@@ -1,28 +1,44 @@
 import json
+import logging
 import re
 import uuid
 from pathlib import Path
 from typing import Optional
+
 from fastapi import UploadFile
+
 from app.config import Settings
-from app.models.item import ImageInfo
+from app.models.item import ImageInfo, CropRegion
+from app.services.database import DatabaseService, get_database_service
+
+logger = logging.getLogger(__name__)
 
 
 class StorageService:
+    """
+    Storage service for images.
+    Uses filesystem for image files, PostgreSQL for metadata.
+    """
+
     def __init__(self, settings: Settings):
         self.settings = settings
         self.images_dir = Path(settings.images_dir)
         self.images_dir.mkdir(parents=True, exist_ok=True)
+        self._db: Optional[DatabaseService] = None
+
+    @property
+    def db(self) -> DatabaseService:
+        """Lazy load database service."""
+        if self._db is None:
+            self._db = get_database_service(self.settings)
+        return self._db
 
     def _sanitize_item_id(self, item_id: str) -> str:
         """Sanitize item_id to prevent path traversal attacks."""
-        # Reject path traversal attempts
         if '..' in item_id or '/' in item_id or '\\' in item_id:
             raise ValueError(f"Invalid item_id: {item_id}")
-        # Reject empty or whitespace-only IDs
         if not item_id or not item_id.strip():
             raise ValueError("Item ID cannot be empty")
-        # Reject IDs with problematic characters
         if re.search(r'[<>:"|?*\x00-\x1f]', item_id):
             raise ValueError(f"Invalid characters in item_id: {item_id}")
         return item_id.strip()
@@ -30,12 +46,12 @@ class StorageService:
     def _get_item_dir(self, item_id: str) -> Path:
         safe_id = self._sanitize_item_id(item_id)
         item_dir = self.images_dir / safe_id
-        # Verify the resulting path is still under images_dir (defense in depth)
         if not item_dir.resolve().is_relative_to(self.images_dir.resolve()):
             raise ValueError(f"Invalid item_id: {item_id}")
         item_dir.mkdir(parents=True, exist_ok=True)
         return item_dir
 
+    # Legacy file-based methods for backward compatibility during migration
     def _get_order_file(self, item_id: str) -> Path:
         return self._get_item_dir(item_id) / ".order.json"
 
@@ -70,17 +86,27 @@ class StorageService:
 
     def set_crop_region(self, item_id: str, image_id: str, region: dict) -> bool:
         """Set crop region for an image (x, y, size as percentages 0-100)."""
-        # Validate region has required fields
         if not all(k in region for k in ("x", "y", "size")):
             return False
-        # Validate values are in valid range
         x, y, size = region["x"], region["y"], region["size"]
         if not (0 <= x <= 100 and 0 <= y <= 100 and 0 < size <= 100):
             return False
-        # Ensure crop box stays within image bounds
         if x + size > 100 or y + size > 100:
             return False
 
+        # Try DB first
+        try:
+            if self.db.is_connected():
+                result = self.db.set_crop_region(image_id, {"x": x, "y": y, "size": size})
+                if result:
+                    return True
+        except Exception as e:
+            logger.warning(
+                f"DB crop region failed for image {image_id} "
+                f"(item '{item_id}'), using file: {e}"
+            )
+
+        # Fallback to file-based storage
         metadata = self._load_metadata(item_id)
         if "crop_regions" not in metadata:
             metadata["crop_regions"] = {}
@@ -88,10 +114,33 @@ class StorageService:
         self._save_metadata(item_id, metadata)
         return True
 
-    def get_crop_region(self, item_id: str, image_id: str) -> dict | None:
-        """Get crop region for an image. Returns None if not set."""
+    def _get_crop_region_from_file(self, item_id: str, image_id: str) -> Optional[CropRegion]:
+        """Get crop region from file-based storage only."""
         metadata = self._load_metadata(item_id)
-        return metadata.get("crop_regions", {}).get(image_id)
+        crop = metadata.get("crop_regions", {}).get(image_id)
+        if crop:
+            return CropRegion(x=crop['x'], y=crop['y'], size=crop['size'])
+        return None
+
+    def get_crop_region(self, item_id: str, image_id: str) -> Optional[CropRegion]:
+        """Get crop region for an image. Returns None if not set."""
+        # Try DB first
+        try:
+            if self.db.is_connected():
+                meta = self.db.get_image_metadata(image_id)
+                if meta and meta.get('crop_region'):
+                    cr = meta['crop_region']
+                    return CropRegion(x=cr['x'], y=cr['y'], size=cr['size'])
+                # If meta exists but no crop_region, or meta doesn't exist,
+                # check file fallback (image might not be in DB)
+        except Exception as e:
+            logger.warning(
+                f"DB get crop failed for image {image_id} "
+                f"(item '{item_id}'), using file: {e}"
+            )
+
+        # Fallback to file-based storage
+        return self._get_crop_region_from_file(item_id, image_id)
 
     def _get_image_path(self, item_id: str, image_id: str) -> Optional[Path]:
         item_dir = self.images_dir / item_id
@@ -104,7 +153,9 @@ class StorageService:
 
         return None
 
-    async def save_image(self, item_id: str, file: UploadFile, base_url: str) -> ImageInfo:
+    async def save_image(
+        self, item_id: str, file: UploadFile, base_url: str
+    ) -> ImageInfo:
         item_dir = self._get_item_dir(item_id)
 
         # Generate unique image ID
@@ -122,10 +173,33 @@ class StorageService:
         with open(file_path, "wb") as f:
             f.write(content)
 
-        # Add to order list
-        order = self._load_order(item_id)
-        order.append(image_id)
-        self._save_order(item_id, order)
+        # Get current order/count for display_order
+        try:
+            if self.db.is_connected():
+                existing_images = self.db.get_images_for_item(item_id)
+                display_order = len(existing_images)
+
+                # Save to DB
+                self.db.save_image_metadata(
+                    image_id=image_id,
+                    item_id=item_id,
+                    filename=original_filename,
+                    display_order=display_order,
+                )
+                file_size_kb = len(content) / 1024
+                logger.info(
+                    f"Saved image {image_id} for item '{item_id}': "
+                    f"{original_filename} ({file_size_kb:.1f} KB)"
+                )
+        except Exception as e:
+            logger.warning(
+                f"DB save image failed for {image_id} "
+                f"(item '{item_id}'), using file: {e}"
+            )
+            # Fallback to file-based order
+            order = self._load_order(item_id)
+            order.append(image_id)
+            self._save_order(item_id, order)
 
         return ImageInfo(
             image_id=image_id,
@@ -135,7 +209,7 @@ class StorageService:
         )
 
     def get_image_path(self, image_id: str) -> Optional[tuple[Path, str]]:
-        # Search all item directories for the image
+        """Search all item directories for the image."""
         for item_dir in self.images_dir.iterdir():
             if not item_dir.is_dir():
                 continue
@@ -151,27 +225,79 @@ class StorageService:
         if not item_dir.exists():
             return []
 
-        # Build a dict of all images
-        images_by_id: dict[str, ImageInfo] = {}
+        # Build a dict of all images on disk
+        images_on_disk: dict[str, tuple[str, Path]] = {}
         for file in item_dir.iterdir():
             if file.is_file() and not file.name.startswith('.'):
-                images_by_id[file.stem] = ImageInfo(
-                    image_id=file.stem,
-                    item_id=item_id,
-                    filename=file.name,
-                    url=f"{base_url}/images/{file.stem}",
-                    crop_region=self.get_crop_region(item_id, file.stem),
-                )
+                images_on_disk[file.stem] = (file.name, file)
 
-        # Sort by saved order, with any new images at the end
-        order = self._load_order(item_id)
+        if not images_on_disk:
+            return []
+
         result = []
-        for image_id in order:
-            if image_id in images_by_id:
-                result.append(images_by_id.pop(image_id))
 
-        # Add any remaining images not in order (e.g., legacy images)
-        result.extend(images_by_id.values())
+        # Try to get order and crop from DB
+        try:
+            if self.db.is_connected():
+                db_images = self.db.get_images_for_item(item_id)
+
+                # Add images in DB order
+                for db_img in db_images:
+                    img_id = db_img['image_id']
+                    if img_id in images_on_disk:
+                        filename, _ = images_on_disk.pop(img_id)
+                        crop = None
+                        if db_img.get('crop_region'):
+                            cr = db_img['crop_region']
+                            crop = CropRegion(x=cr['x'], y=cr['y'], size=cr['size'])
+
+                        result.append(ImageInfo(
+                            image_id=img_id,
+                            item_id=item_id,
+                            filename=filename,
+                            url=f"{base_url}/images/{img_id}",
+                            crop_region=crop,
+                        ))
+
+                # Add any remaining disk images not in DB (check file fallback for crop)
+                for img_id, (filename, _) in images_on_disk.items():
+                    result.append(ImageInfo(
+                        image_id=img_id,
+                        item_id=item_id,
+                        filename=filename,
+                        url=f"{base_url}/images/{img_id}",
+                        crop_region=self._get_crop_region_from_file(item_id, img_id),
+                    ))
+
+                return result
+        except Exception as e:
+            logger.warning(
+                f"DB list images failed for item '{item_id}', using file: {e}"
+            )
+
+        # Fallback to file-based order
+        order = self._load_order(item_id)
+
+        for img_id in order:
+            if img_id in images_on_disk:
+                filename, _ = images_on_disk.pop(img_id)
+                result.append(ImageInfo(
+                    image_id=img_id,
+                    item_id=item_id,
+                    filename=filename,
+                    url=f"{base_url}/images/{img_id}",
+                    crop_region=self.get_crop_region(item_id, img_id),
+                ))
+
+        # Add remaining images not in order
+        for img_id, (filename, _) in images_on_disk.items():
+            result.append(ImageInfo(
+                image_id=img_id,
+                item_id=item_id,
+                filename=filename,
+                url=f"{base_url}/images/{img_id}",
+                crop_region=self.get_crop_region(item_id, img_id),
+            ))
 
         return result
 
@@ -183,7 +309,18 @@ class StorageService:
         file_path, item_id = result
         file_path.unlink()
 
-        # Remove from order list
+        # Delete from DB
+        try:
+            if self.db.is_connected():
+                self.db.delete_image_metadata(image_id)
+                logger.info(f"Deleted image {image_id} from item '{item_id}'")
+        except Exception as e:
+            logger.warning(
+                f"DB delete image failed for {image_id} "
+                f"(item '{item_id}'): {e}"
+            )
+
+        # Also remove from file-based order (for backward compat)
         order = self._load_order(item_id)
         if image_id in order:
             order.remove(image_id)
@@ -198,10 +335,24 @@ class StorageService:
             return False
 
         # Verify all image_ids exist
-        existing_ids = {f.stem for f in item_dir.iterdir() if f.is_file() and not f.name.startswith('.')}
-        if not all(img_id in existing_ids for img_id in image_ids):
+        existing = {f.stem for f in item_dir.iterdir() if f.is_file() and not f.name.startswith('.')}
+        if not all(img_id in existing for img_id in image_ids):
             return False
 
+        # Update DB order
+        try:
+            if self.db.is_connected():
+                self.db.update_image_order(item_id, image_ids)
+                logger.info(
+                    f"Reordered {len(image_ids)} images for item '{item_id}'"
+                )
+        except Exception as e:
+            logger.warning(
+                f"DB reorder failed for item '{item_id}' "
+                f"({len(image_ids)} images): {e}"
+            )
+
+        # Also update file-based order
         self._save_order(item_id, image_ids)
         return True
 
@@ -214,13 +365,24 @@ class StorageService:
         for file in item_dir.iterdir():
             if file.is_file():
                 file.unlink()
-                # Don't count hidden files (like .order.json)
                 if not file.name.startswith('.'):
                     count += 1
 
         # Remove empty directory
         if item_dir.exists() and not any(item_dir.iterdir()):
             item_dir.rmdir()
+
+        # Delete from DB
+        try:
+            if self.db.is_connected():
+                self.db.delete_images_for_item(item_id)
+                logger.info(
+                    f"Deleted all {count} images for item '{item_id}'"
+                )
+        except Exception as e:
+            logger.warning(
+                f"DB delete images failed for item '{item_id}': {e}"
+            )
 
         return count
 
@@ -229,16 +391,15 @@ class StorageService:
         old_dir = self.images_dir / old_id
         new_dir = self.images_dir / new_id
 
-        # If new folder already exists, fail
         if new_dir.exists():
             return False
 
-        # If old folder doesn't exist, that's OK (no images yet)
         if not old_dir.exists():
             return True
 
-        # Rename the folder
         old_dir.rename(new_dir)
+
+        # Update DB - this is done in sheets service
         return True
 
 

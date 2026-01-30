@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👔</text></svg>">
     <title>Wardrobe Architect</title>
     <style>
         * {
@@ -611,6 +612,137 @@
         @keyframes slideIn {
             from { transform: translateY(100%); opacity: 0; }
             to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Tablet and mobile (< 768px) */
+        @media (max-width: 768px) {
+            /* Header: stack vertically */
+            header {
+                flex-direction: column;
+                gap: 1rem;
+                padding: 1rem;
+                text-align: center;
+            }
+            .header-actions {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            /* Container: reduce padding */
+            .container {
+                padding: 1rem;
+            }
+
+            /* Filters: stack vertically */
+            .filters {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .filters select {
+                width: 100%;
+            }
+
+            /* Grid: 2 columns on tablets/large phones */
+            .items-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 1rem;
+            }
+
+            /* Card action buttons: 2x2 grid */
+            .item-actions {
+                flex-wrap: wrap;
+            }
+            .item-actions .btn {
+                flex: 1 1 45%;
+                min-width: 0;
+            }
+
+            /* Modal: full width */
+            .modal-content {
+                margin: 1rem;
+                max-width: calc(100% - 2rem);
+                max-height: calc(100vh - 2rem);
+            }
+
+            /* Crop editor: compact */
+            .crop-editor-content {
+                padding: 1rem;
+                max-width: 95vw;
+            }
+
+            /* Toast: center at bottom */
+            .toast {
+                left: 1rem;
+                right: 1rem;
+                bottom: 1rem;
+            }
+
+            /* Always show carousel buttons (no hover on touch) */
+            .carousel-btn {
+                opacity: 0.8;
+            }
+
+            /* Larger crop handles for touch */
+            .crop-handle {
+                width: 24px;
+                height: 24px;
+            }
+            .crop-handle.nw { top: -12px; left: -12px; }
+            .crop-handle.ne { top: -12px; right: -12px; }
+            .crop-handle.sw { bottom: -12px; left: -12px; }
+            .crop-handle.se { bottom: -12px; right: -12px; }
+
+            /* Delete/crop buttons always visible */
+            .image-delete-btn,
+            .crop-edit-btn {
+                opacity: 1;
+            }
+        }
+
+        /* Small phones in portrait (< 480px): single column */
+        @media (max-width: 480px) {
+            header h1 {
+                font-size: 1.25rem;
+            }
+            .btn {
+                padding: 0.5rem 0.75rem;
+                font-size: 0.85rem;
+            }
+
+            /* Single column layout */
+            .items-grid {
+                grid-template-columns: 1fr;
+            }
+
+            /* Card adjustments */
+            .item-image {
+                aspect-ratio: 4 / 3;
+            }
+            .item-details {
+                padding: 1rem;
+            }
+            .item-name {
+                font-size: 1rem;
+            }
+            .tag {
+                font-size: 0.7rem;
+                padding: 0.2rem 0.5rem;
+            }
+
+            /* Image modal: single column */
+            .image-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Landscape phones: 2 columns */
+        @media (max-width: 768px) and (orientation: landscape) {
+            .items-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .item-image {
+                aspect-ratio: 1 / 1;
+            }
         }
     </style>
 </head>

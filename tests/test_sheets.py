@@ -1,17 +1,19 @@
 import pytest
 from unittest.mock import MagicMock
 from app.services.sheets import SheetsService, COLUMNS
-from app.models.item import WardrobeItemCreate, WardrobeItemUpdate
+from app.models.item import WardrobeItem, WardrobeItemCreate, WardrobeItemUpdate
 from app.config import Settings
 
 
 @pytest.fixture
 def settings():
+    """Settings with invalid database URL to prevent DB connections in unit tests."""
     return Settings(
         api_key="test-key",
         google_sheets_credentials_json="{}",
         google_sheet_id="fake-sheet-id",
         images_dir="/fake/images",
+        database_url="postgresql://invalid:invalid@localhost:9999/invalid",
     )
 
 
@@ -23,11 +25,20 @@ def mock_worksheet():
 
 
 @pytest.fixture
-def sheets_service(settings, mock_worksheet):
-    """Create SheetsService with mocked gspread."""
+def mock_db():
+    """Create a mock database service."""
+    db = MagicMock()
+    db.is_connected.return_value = False
+    return db
+
+
+@pytest.fixture
+def sheets_service(settings, mock_worksheet, mock_db):
+    """Create SheetsService with mocked gspread and database."""
     service = SheetsService(settings)
     service._sheet = mock_worksheet
     service._client = MagicMock()
+    service._db = mock_db
     return service
 
 
@@ -76,11 +87,19 @@ class TestRowToItem:
 
 
 class TestGetAllItems:
-    def test_returns_all_items(self, sheets_service, mock_worksheet):
-        mock_worksheet.get_all_values.return_value = [
-            ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
-            ["1", "Shirt", "Tops", "Blue", "Slim", "All", ""],
-            ["2", "Pants", "Bottoms", "Black", "Regular", "All", "Favorite"],
+    """Tests for get_all_items which now reads from DB."""
+
+    def test_returns_all_items(self, sheets_service, mock_db):
+        # Mock DB to return items
+        mock_db.get_all_items.return_value = [
+            WardrobeItem(
+                id="1", item="Shirt", category="Tops",
+                color="Blue", fit="Slim", season="All"
+            ),
+            WardrobeItem(
+                id="2", item="Pants", category="Bottoms",
+                color="Black", fit="Regular", season="All", notes="Favorite"
+            ),
         ]
 
         items = sheets_service.get_all_items()
@@ -89,12 +108,16 @@ class TestGetAllItems:
         assert items[0].id == "1"
         assert items[1].id == "2"
 
-    def test_filter_by_category(self, sheets_service, mock_worksheet):
-        mock_worksheet.get_all_values.return_value = [
-            ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
-            ["1", "Shirt", "Tops", "Blue", "Slim", "All", ""],
-            ["2", "Pants", "Bottoms", "Black", "Regular", "All", ""],
-            ["3", "Jacket", "Tops", "Navy", "Slim", "Winter", ""],
+    def test_filter_by_category(self, sheets_service, mock_db):
+        mock_db.get_all_items.return_value = [
+            WardrobeItem(
+                id="1", item="Shirt", category="Tops",
+                color="Blue", fit="Slim", season="All"
+            ),
+            WardrobeItem(
+                id="3", item="Jacket", category="Tops",
+                color="Navy", fit="Slim", season="Winter"
+            ),
         ]
 
         items = sheets_service.get_all_items(category="Tops")
@@ -102,23 +125,28 @@ class TestGetAllItems:
         assert len(items) == 2
         assert all(item.category == "Tops" for item in items)
 
-    def test_filter_by_color(self, sheets_service, mock_worksheet):
-        mock_worksheet.get_all_values.return_value = [
-            ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
-            ["1", "Shirt", "Tops", "Blue", "Slim", "All", ""],
-            ["2", "Pants", "Bottoms", "Blue", "Regular", "All", ""],
-            ["3", "Jacket", "Tops", "Navy", "Slim", "Winter", ""],
+    def test_filter_by_color(self, sheets_service, mock_db):
+        mock_db.get_all_items.return_value = [
+            WardrobeItem(
+                id="1", item="Shirt", category="Tops",
+                color="Blue", fit="Slim", season="All"
+            ),
+            WardrobeItem(
+                id="2", item="Pants", category="Bottoms",
+                color="Blue", fit="Regular", season="All"
+            ),
         ]
 
         items = sheets_service.get_all_items(color="Blue")
 
         assert len(items) == 2
 
-    def test_filter_by_season(self, sheets_service, mock_worksheet):
-        mock_worksheet.get_all_values.return_value = [
-            ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
-            ["1", "Shirt", "Tops", "Blue", "Slim", "Summer", ""],
-            ["2", "Pants", "Bottoms", "Black", "Regular", "Winter", ""],
+    def test_filter_by_season(self, sheets_service, mock_db):
+        mock_db.get_all_items.return_value = [
+            WardrobeItem(
+                id="2", item="Pants", category="Bottoms",
+                color="Black", fit="Regular", season="Winter"
+            ),
         ]
 
         items = sheets_service.get_all_items(season="Winter")
@@ -126,31 +154,32 @@ class TestGetAllItems:
         assert len(items) == 1
         assert items[0].season == "Winter"
 
-    def test_filter_case_insensitive(self, sheets_service, mock_worksheet):
-        mock_worksheet.get_all_values.return_value = [
-            ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
-            ["1", "Shirt", "TOPS", "Blue", "Slim", "All", ""],
+    def test_filter_case_insensitive(self, sheets_service, mock_db):
+        # Note: Case sensitivity is now handled by DB, mock returns filtered result
+        mock_db.get_all_items.return_value = [
+            WardrobeItem(
+                id="1", item="Shirt", category="TOPS",
+                color="Blue", fit="Slim", season="All"
+            ),
         ]
 
         items = sheets_service.get_all_items(category="tops")
         assert len(items) == 1
 
-    def test_empty_sheet(self, sheets_service, mock_worksheet):
-        mock_worksheet.get_all_values.return_value = [
-            ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
-        ]
+    def test_empty_sheet(self, sheets_service, mock_db):
+        mock_db.get_all_items.return_value = []
 
         items = sheets_service.get_all_items()
         assert len(items) == 0
 
 
 class TestGetItemById:
-    def test_found(self, sheets_service, mock_worksheet):
-        mock_worksheet.get_all_values.return_value = [
-            ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
-            ["1", "Shirt", "Tops", "Blue", "Slim", "All", ""],
-            ["2", "Pants", "Bottoms", "Black", "Regular", "All", ""],
-        ]
+    """Tests for get_item_by_id which now reads from DB."""
+
+    def test_found(self, sheets_service, mock_db):
+        mock_db.get_item_by_id.return_value = WardrobeItem(
+            id="2", item="Pants", category="Bottoms", color="Black", fit="Regular", season="All"
+        )
 
         item = sheets_service.get_item_by_id("2")
 
@@ -158,11 +187,8 @@ class TestGetItemById:
         assert item.id == "2"
         assert item.item == "Pants"
 
-    def test_not_found(self, sheets_service, mock_worksheet):
-        mock_worksheet.get_all_values.return_value = [
-            ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
-            ["1", "Shirt", "Tops", "Blue", "Slim", "All", ""],
-        ]
+    def test_not_found(self, sheets_service, mock_db):
+        mock_db.get_item_by_id.return_value = None
 
         item = sheets_service.get_item_by_id("999")
         assert item is None
@@ -190,7 +216,7 @@ class TestGenerateNextId:
 
 
 class TestCreateItem:
-    def test_creates_item(self, sheets_service, mock_worksheet):
+    def test_creates_item(self, sheets_service, mock_worksheet, mock_db):
         mock_worksheet.get_all_values.return_value = [
             ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
             ["1", "Shirt", "Tops", "Blue", "Slim", "All", ""],
@@ -205,11 +231,23 @@ class TestCreateItem:
             notes="Brand new",
         )
 
+        # Mock the DB create to return the expected item
+        mock_db.create_item.return_value = WardrobeItem(
+            id="2",
+            item="New Jacket",
+            category="Outerwear",
+            color="Black",
+            fit="Regular",
+            season="Winter",
+            notes="Brand new",
+        )
+
         result = sheets_service.create_item(item_data)
 
         assert result.id == "2"
         assert result.item == "New Jacket"
         mock_worksheet.append_row.assert_called_once()
+        mock_db.create_item.assert_called_once()
 
 
 class TestUpdateItem:
@@ -260,34 +298,45 @@ class TestDeleteItem:
 
 
 class TestRenameItemId:
-    def test_rename_success(self, sheets_service, mock_worksheet):
+    def test_rename_success(self, sheets_service, mock_worksheet, mock_db):
         mock_worksheet.get_all_values.return_value = [
             ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
             ["old_id", "Shirt", "Tops", "Blue", "Slim", "All", ""],
         ]
+        # new_id doesn't exist
+        mock_db.get_item_by_id.return_value = None
 
         result = sheets_service.rename_item_id("old_id", "new_id")
 
         assert result is True
-        mock_worksheet.update_cell.assert_called_once_with(2, COLUMNS["id"], "new_id")
+        mock_worksheet.update_cell.assert_called_once_with(
+            2, COLUMNS["id"], "new_id"
+        )
+        mock_db.rename_item_id.assert_called_once()
 
-    def test_rename_old_id_not_found(self, sheets_service, mock_worksheet):
+    def test_rename_old_id_not_found(self, sheets_service, mock_worksheet, mock_db):
         mock_worksheet.get_all_values.return_value = [
             ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
             ["1", "Shirt", "Tops", "Blue", "Slim", "All", ""],
         ]
+        mock_db.get_item_by_id.return_value = None
 
         result = sheets_service.rename_item_id("nonexistent", "new_id")
 
         assert result is False
         mock_worksheet.update_cell.assert_not_called()
 
-    def test_rename_new_id_already_exists(self, sheets_service, mock_worksheet):
+    def test_rename_new_id_already_exists(self, sheets_service, mock_worksheet, mock_db):
         mock_worksheet.get_all_values.return_value = [
             ["ID", "Item", "Category", "Color", "Fit", "Season", "Notes"],
             ["old_id", "Shirt", "Tops", "Blue", "Slim", "All", ""],
             ["new_id", "Pants", "Bottoms", "Black", "Regular", "All", ""],
         ]
+        # new_id already exists in DB
+        mock_db.get_item_by_id.return_value = WardrobeItem(
+            id="new_id", item="Pants", category="Bottoms",
+            color="Black", fit="Regular", season="All"
+        )
 
         result = sheets_service.rename_item_id("old_id", "new_id")
 

@@ -4,16 +4,19 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import UploadFile
 
 from app.services.storage import StorageService
+from app.models.item import CropRegion
 from app.config import Settings
 
 
 @pytest.fixture
 def settings(tmp_path):
+    """Settings with invalid database URL to prevent DB connections in unit tests."""
     return Settings(
         api_key="test-key",
         google_sheets_credentials_json="{}",
         google_sheet_id="fake-id",
         images_dir=str(tmp_path / "images"),
+        database_url="postgresql://invalid:invalid@localhost:9999/invalid",
     )
 
 
@@ -234,7 +237,7 @@ class TestCropRegion:
 
         # Get crop region
         retrieved = storage.get_crop_region("item_1", image_id)
-        assert retrieved == {"x": 10, "y": 20, "size": 50}
+        assert retrieved == CropRegion(x=10.0, y=20.0, size=50.0)
 
     def test_get_crop_region_not_set(self, storage):
         result = storage.get_crop_region("item_1", "nonexistent")

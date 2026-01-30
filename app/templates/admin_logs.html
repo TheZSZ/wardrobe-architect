@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👔</text></svg>">
+    <title>Logs - Wardrobe Architect Admin</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e5e5e5;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 0.75rem 1rem;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #e5e5e5;
+            font-size: 0.875rem;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #2563eb;
+        }
+
+        select {
+            padding: 0.75rem 1rem;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #e5e5e5;
+            font-size: 0.875rem;
+            cursor: pointer;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #2563eb;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1d4ed8;
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: #e5e5e5;
+        }
+
+        .btn-secondary:hover {
+            background: #404040;
+        }
+
+        .log-container {
+            background: #0d0d0d;
+            border: 1px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .log-header {
+            background: #1a1a1a;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #333;
+            font-size: 0.875rem;
+            color: #888;
+        }
+
+        .log-content {
+            padding: 1rem;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.75rem;
+            max-height: 70vh;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.8;
+        }
+
+        .log-line {
+            padding: 0.25rem 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+
+        .log-line:last-child {
+            border-bottom: none;
+        }
+
+        .log-line:hover {
+            background: rgba(37, 99, 235, 0.1);
+        }
+
+        .log-line.error {
+            color: #f87171;
+        }
+
+        .log-line.warning {
+            color: #facc15;
+        }
+
+        .log-line.info {
+            color: #60a5fa;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #888;
+        }
+
+        .stats {
+            display: flex;
+            gap: 2rem;
+            font-size: 0.875rem;
+            color: #888;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid #333;
+        }
+
+        .tab {
+            padding: 0.75rem 1.5rem;
+            background: transparent;
+            color: #888;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            font-size: 0.875rem;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: #e5e5e5;
+        }
+
+        .tab.active {
+            color: #60a5fa;
+            border-bottom-color: #60a5fa;
+        }
+
+        @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+
+            .search-input {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>Application Logs</h1>
+            <div class="stats">
+                <span>Showing {{ total_lines }} lines</span>
+                {% if search %}<span>Filtered by: "{{ search }}"</span>{% endif %}
+            </div>
+        </div>
+        <div class="header-actions">
+            <a href="/admin" class="btn btn-secondary">Back to Dashboard</a>
+            <a href="/admin/logs/download" class="btn btn-primary">Download Full Log</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="tabs">
+            <a href="/admin/logs" class="tab active">API Logs</a>
+            <a href="/admin/logs/nginx" class="tab">Nginx Logs</a>
+        </div>
+
+        <form class="controls" method="GET" action="/admin/logs">
+            <input
+                type="text"
+                name="search"
+                class="search-input"
+                placeholder="Search logs..."
+                value="{{ search }}"
+            >
+            <select name="lines" onchange="this.form.submit()">
+                <option value="50" {% if lines == 50 %}selected{% endif %}>50 lines</option>
+                <option value="100" {% if lines == 100 %}selected{% endif %}>100 lines</option>
+                <option value="250" {% if lines == 250 %}selected{% endif %}>250 lines</option>
+                <option value="500" {% if lines == 500 %}selected{% endif %}>500 lines</option>
+                <option value="1000" {% if lines == 1000 %}selected{% endif %}>1000 lines</option>
+            </select>
+            <button type="submit" class="btn btn-primary">Filter</button>
+            <button type="button" class="btn btn-secondary" onclick="location.reload()">Refresh</button>
+        </form>
+
+        <div class="log-container">
+            <div class="log-header">
+                wardrobe-api.log
+            </div>
+            <div class="log-content" id="log-content">
+                {%- for line in log_lines %}
+                {%- if line %}<div class="log-line {% if 'ERROR' in line %}error{% elif 'WARNING' in line %}warning{% elif 'INFO' in line %}info{% endif %}">{{ line }}</div>{% endif %}
+                {%- else %}
+                <div class="empty-state">
+                    <p>No logs found</p>
+                    {% if search %}
+                    <p>Try a different search term or clear the filter</p>
+                    {% endif %}
+                </div>
+                {%- endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-refresh every 30 seconds
+        setTimeout(() => location.reload(), 30000);
+    </script>
+</body>
+</html>

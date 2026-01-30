@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👔</text></svg>">
+    <title>Admin - Wardrobe Architect</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e5e5e5;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid #333;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        header p {
+            color: #888;
+            font-size: 0.875rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 1.5rem;
+            border: 1px solid #333;
+        }
+
+        .stat-card .label {
+            color: #888;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #4ade80;
+            margin-top: 0.5rem;
+        }
+
+        .stat-card.warning .value {
+            color: #facc15;
+        }
+
+        .stat-card.error .value {
+            color: #f87171;
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 2rem;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #2563eb;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1d4ed8;
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: #e5e5e5;
+        }
+
+        .btn-secondary:hover {
+            background: #404040;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .section {
+            background: #1a1a1a;
+            border-radius: 8px;
+            border: 1px solid #333;
+            margin-bottom: 2rem;
+        }
+
+        .section-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section-header h2 {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .section-content {
+            padding: 1.5rem;
+        }
+
+        .log-viewer {
+            background: #0d0d0d;
+            border-radius: 4px;
+            padding: 1rem;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.75rem;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.8;
+        }
+
+        .log-line {
+            padding: 0.25rem 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+
+        .log-line:last-child {
+            border-bottom: none;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .status-badge.ok {
+            background: rgba(74, 222, 128, 0.1);
+            color: #4ade80;
+        }
+
+        .status-badge.error {
+            background: rgba(248, 113, 113, 0.1);
+            color: #f87171;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .sync-status {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #0d0d0d;
+            border-radius: 4px;
+            font-size: 0.875rem;
+        }
+
+        #sync-message {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            border-radius: 4px;
+            display: none;
+        }
+
+        #sync-message.success {
+            display: block;
+            background: rgba(74, 222, 128, 0.1);
+            border: 1px solid #4ade80;
+            color: #4ade80;
+        }
+
+        #sync-message.error {
+            display: block;
+            background: rgba(248, 113, 113, 0.1);
+            border: 1px solid #f87171;
+            color: #f87171;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .nav-links a {
+            color: #60a5fa;
+            text-decoration: none;
+            font-size: 0.875rem;
+        }
+
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h1>Admin Dashboard</h1>
+                <p>Wardrobe Architect System Administration</p>
+            </div>
+            <a href="/admin/logout" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.75rem;">Logout</a>
+        </div>
+        <nav class="nav-links">
+            <a href="/">Wardrobe</a>
+            <a href="/admin/db">Database</a>
+            <a href="/admin/logs">Logs</a>
+            <a href="/admin/coverage">Coverage</a>
+            <a href="/admin/docs">API Docs</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">Items</div>
+                <div class="value">{{ item_count }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Images</div>
+                <div class="value">{{ image_count }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Disk Usage</div>
+                <div class="value">{{ disk_used_mb }} MB</div>
+            </div>
+            <div class="stat-card {% if not db_connected %}error{% endif %}">
+                <div class="label">Database</div>
+                <div class="value">
+                    <span class="status-badge {% if db_connected %}ok{% else %}error{% endif %}">
+                        <span class="status-dot"></span>
+                        {% if db_connected %}Connected{% else %}Disconnected{% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-primary" id="sync-btn" onclick="triggerSync()" {% if dummy_mode %}disabled{% endif %}>
+                Sync from Sheets
+            </button>
+            <a href="/admin/logs" class="btn btn-secondary">API Logs</a>
+            <a href="/admin/logs/nginx" class="btn btn-secondary">Nginx Logs</a>
+            <a href="/admin/coverage" class="btn btn-secondary">Coverage Report</a>
+        </div>
+
+        {% if dummy_mode %}
+        <div style="background: rgba(250, 204, 21, 0.1); border: 1px solid #facc15; padding: 1rem; border-radius: 4px; margin-bottom: 2rem; color: #facc15;">
+            Running in Dummy Mode - No Google Sheets connection
+        </div>
+        {% endif %}
+
+        <div id="sync-message"></div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2>Last Sync</h2>
+            </div>
+            <div class="section-content">
+                <div class="sync-status">
+                    {% if last_sync %}
+                    <p><strong>Time:</strong> {{ last_sync.synced_at }}</p>
+                    <p><strong>Items Synced:</strong> {{ last_sync.items_synced }}</p>
+                    <p><strong>Status:</strong> {{ last_sync.status }}</p>
+                    {% else %}
+                    <p>No sync history available</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2>Recent Logs</h2>
+                <a href="/admin/logs" class="btn btn-secondary" style="padding: 0.5rem 1rem;">View All</a>
+            </div>
+            <div class="section-content">
+                <div class="log-viewer">{%- for line in recent_logs %}
+{%- if line %}<div class="log-line">{{ line }}</div>{% endif %}
+{%- else %}<div class="log-line">No logs available</div>
+{%- endfor %}</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function triggerSync() {
+            const btn = document.getElementById('sync-btn');
+            const msgEl = document.getElementById('sync-message');
+
+            btn.disabled = true;
+            btn.textContent = 'Syncing...';
+            msgEl.className = '';
+            msgEl.style.display = 'none';
+
+            try {
+                const response = await fetch('/admin/sync', {
+                    method: 'POST',
+                    credentials: 'same-origin'  // Include cookies
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    msgEl.className = 'success';
+                    msgEl.textContent = data.message;
+                    // Reload page after short delay to show updated stats
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    msgEl.className = 'error';
+                    msgEl.textContent = 'Sync failed: ' + (data.detail || 'Unknown error');
+                }
+            } catch (error) {
+                msgEl.className = 'error';
+                msgEl.textContent = 'Sync failed: ' + error.message;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Sync from Sheets';
+            }
+        }
+    </script>
+</body>
+</html>

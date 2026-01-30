@@ -6,11 +6,13 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
 .venv/
 venv/
 
 # Testing
 .pytest_cache/
+.mypy_cache/
 htmlcov/
 .coverage
 
@@ -20,8 +22,10 @@ htmlcov/
 *.swp
 *.swo
 
-# Docker
+# Docker / Runtime data
 images/
+logs/
+backups/
 
 # OS
 .DS_Store

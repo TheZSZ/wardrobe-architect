@@ -14,7 +14,11 @@ dist/
 build/
 .pytest_cache/
 .mypy_cache/
+htmlcov/
+.coverage
 *.log
+logs/
+backups/
 .DS_Store
 README.md
 .claude/

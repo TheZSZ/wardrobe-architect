@@ -16,7 +16,11 @@ TEST_API_KEY = "test-api-key-12345"
 
 @pytest.fixture
 def test_settings(tmp_path):
-    """Create test settings with temporary directories."""
+    """Create test settings with temporary directories.
+
+    Uses an invalid database URL to ensure unit tests don't connect
+    to any real database - they should use file-based fallbacks.
+    """
     return Settings(
         api_key=TEST_API_KEY,
         google_sheets_credentials_json="{}",
@@ -24,6 +28,7 @@ def test_settings(tmp_path):
         images_dir=str(tmp_path / "images"),
         host="0.0.0.0",
         port=8000,
+        database_url="postgresql://invalid:invalid@localhost:9999/invalid",
     )
 
 

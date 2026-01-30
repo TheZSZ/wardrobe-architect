@@ -1,10 +1,14 @@
 import json
+import logging
 import gspread
 from google.oauth2.service_account import Credentials
 from typing import Optional
+
 from app.config import Settings
 from app.models.item import WardrobeItem, WardrobeItemCreate, WardrobeItemUpdate
+from app.services.database import DatabaseService, get_database_service
 
+logger = logging.getLogger(__name__)
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -24,10 +28,20 @@ COLUMNS = {
 
 
 class SheetsService:
+    """Google Sheets service with dual-write to PostgreSQL."""
+
     def __init__(self, settings: Settings):
         self.settings = settings
         self._client: Optional[gspread.Client] = None
         self._sheet: Optional[gspread.Worksheet] = None
+        self._db: Optional[DatabaseService] = None
+
+    @property
+    def db(self) -> DatabaseService:
+        """Lazy load database service."""
+        if self._db is None:
+            self._db = get_database_service(self.settings)
+        return self._db
 
     def _get_client(self) -> gspread.Client:
         if self._client is None:
@@ -59,42 +73,45 @@ class SheetsService:
             notes=str(row[6]) if len(row) > 6 and row[6] else None,
         )
 
+    def _row_to_dict(self, row: list) -> Optional[dict]:
+        """Convert row to dict for DB sync."""
+        if len(row) < 6 or not row[0]:
+            return None
+        return {
+            'id': str(row[0]),
+            'item': str(row[1]) if len(row) > 1 else "",
+            'category': str(row[2]) if len(row) > 2 else "",
+            'color': str(row[3]) if len(row) > 3 else "",
+            'fit': str(row[4]) if len(row) > 4 else "",
+            'season': str(row[5]) if len(row) > 5 else "",
+            'notes': str(row[6]) if len(row) > 6 and row[6] else None,
+        }
+
     def get_all_items(
         self,
         category: Optional[str] = None,
         color: Optional[str] = None,
         season: Optional[str] = None,
     ) -> list[WardrobeItem]:
+        """Get items - reads from database for speed."""
+        return self.db.get_all_items(category=category, color=color, season=season)
+
+    def get_all_items_from_sheets(self) -> list[dict]:
+        """Get all items directly from Sheets (for sync)."""
         sheet = self._get_sheet()
         all_rows = sheet.get_all_values()
 
         items = []
-        for i, row in enumerate(all_rows[1:], start=2):  # Skip header row
-            item = self._row_to_item(row, i)
-            if item is None:
-                continue
-
-            # Apply filters
-            if category and item.category.lower() != category.lower():
-                continue
-            if color and item.color.lower() != color.lower():
-                continue
-            if season and item.season.lower() != season.lower():
-                continue
-
-            items.append(item)
+        for row in all_rows[1:]:  # Skip header row
+            item_dict = self._row_to_dict(row)
+            if item_dict:
+                items.append(item_dict)
 
         return items
 
     def get_item_by_id(self, item_id: str) -> Optional[WardrobeItem]:
-        sheet = self._get_sheet()
-        all_rows = sheet.get_all_values()
-
-        for i, row in enumerate(all_rows[1:], start=2):
-            if row and str(row[0]) == item_id:
-                return self._row_to_item(row, i)
-
-        return None
+        """Get item by ID - reads from database."""
+        return self.db.get_item_by_id(item_id)
 
     def _find_row_by_id(self, item_id: str) -> Optional[int]:
         sheet = self._get_sheet()
@@ -122,6 +139,7 @@ class SheetsService:
         return str(max_id + 1)
 
     def create_item(self, item_data: WardrobeItemCreate) -> WardrobeItem:
+        """Create item - writes to Sheets first, then DB."""
         sheet = self._get_sheet()
         new_id = self._generate_next_id()
 
@@ -135,11 +153,20 @@ class SheetsService:
             item_data.notes or "",
         ]
 
+        # Write to Sheets first (source of truth)
         sheet.append_row(new_row)
+        logger.info(f"Created item {new_id} in Sheets")
 
-        return WardrobeItem(id=new_id, **item_data.model_dump())
+        # Then write to DB
+        item = self.db.create_item(new_id, item_data)
+        logger.info(f"Created item {new_id} in DB")
 
-    def update_item(self, item_id: str, item_data: WardrobeItemUpdate) -> Optional[WardrobeItem]:
+        return item
+
+    def update_item(
+        self, item_id: str, item_data: WardrobeItemUpdate
+    ) -> Optional[WardrobeItem]:
+        """Update item - writes to Sheets first, then DB."""
         row_index = self._find_row_by_id(item_id)
         if row_index is None:
             return None
@@ -149,6 +176,7 @@ class SheetsService:
         # Update only fields that are provided
         update_data = item_data.model_dump(exclude_unset=True)
 
+        # Write to Sheets first
         if "item" in update_data:
             sheet.update_cell(row_index, COLUMNS["item"], update_data["item"])
         if "category" in update_data:
@@ -162,19 +190,32 @@ class SheetsService:
         if "notes" in update_data:
             sheet.update_cell(row_index, COLUMNS["notes"], update_data["notes"] or "")
 
-        return self.get_item_by_id(item_id)
+        logger.info(f"Updated item {item_id} in Sheets")
+
+        # Then update DB
+        item = self.db.update_item(item_id, item_data)
+        logger.info(f"Updated item {item_id} in DB")
+
+        return item
 
     def delete_item(self, item_id: str) -> bool:
+        """Delete item - deletes from Sheets first, then DB."""
         row_index = self._find_row_by_id(item_id)
         if row_index is None:
             return False
 
         sheet = self._get_sheet()
         sheet.delete_rows(row_index)
+        logger.info(f"Deleted item {item_id} from Sheets")
+
+        # Then delete from DB
+        self.db.delete_item(item_id)
+        logger.info(f"Deleted item {item_id} from DB")
+
         return True
 
     def rename_item_id(self, old_id: str, new_id: str) -> bool:
-        """Rename an item's ID. Returns False if old_id not found or new_id exists."""
+        """Rename item ID - updates Sheets first, then DB."""
         # Check if new_id already exists
         if self.get_item_by_id(new_id) is not None:
             return False
@@ -185,7 +226,22 @@ class SheetsService:
 
         sheet = self._get_sheet()
         sheet.update_cell(row_index, COLUMNS["id"], new_id)
+        logger.info(f"Renamed item {old_id} -> {new_id} in Sheets")
+
+        # Then rename in DB
+        self.db.rename_item_id(old_id, new_id)
+        # Also update image metadata
+        self.db.rename_item_images(old_id, new_id)
+        logger.info(f"Renamed item {old_id} -> {new_id} in DB")
+
         return True
+
+    def sync_to_db(self) -> int:
+        """Sync all data from Sheets to DB."""
+        items = self.get_all_items_from_sheets()
+        count = self.db.sync_from_sheets(items)
+        logger.info(f"Synced {count} items from Sheets to DB")
+        return count
 
 
 SAMPLE_ITEMS = [
@@ -202,19 +258,36 @@ SAMPLE_ITEMS = [
 ]
 
 
-class MockSheetsService:
-    """In-memory mock service for dummy mode testing."""
+class DummyModeService:
+    """
+    DB-backed service for dummy mode (no Google Sheets connection).
+    Uses PostgreSQL but skips Sheets operations.
+    """
 
-    def __init__(self):
-        self._items: dict[str, dict] = {}
-        self._next_id = 1
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self._db: Optional[DatabaseService] = None
+
+    @property
+    def db(self) -> DatabaseService:
+        """Lazy load database service."""
+        if self._db is None:
+            self._db = get_database_service(self.settings)
+        return self._db
 
     def seed_sample_data(self) -> int:
         """Populate with sample clothing items. Returns count of items added."""
-        if self._items:
+        if self.db.get_item_count() > 0:
             return 0  # Don't seed if items already exist
+
         for item_data in SAMPLE_ITEMS:
-            self.create_item(WardrobeItemCreate(**item_data))
+            item_create = WardrobeItemCreate(**item_data)
+            # Generate ID
+            count = self.db.get_item_count()
+            new_id = str(count + 1)
+            self.db.create_item(new_id, item_create)
+
+        logger.info(f"Seeded {len(SAMPLE_ITEMS)} sample items")
         return len(SAMPLE_ITEMS)
 
     def get_all_items(
@@ -223,69 +296,47 @@ class MockSheetsService:
         color: Optional[str] = None,
         season: Optional[str] = None,
     ) -> list[WardrobeItem]:
-        items = []
-        for item_data in self._items.values():
-            item = WardrobeItem(**item_data)
-            if category and item.category.lower() != category.lower():
-                continue
-            if color and item.color.lower() != color.lower():
-                continue
-            if season and item.season.lower() != season.lower():
-                continue
-            items.append(item)
-        return items
+        return self.db.get_all_items(category=category, color=color, season=season)
 
     def get_item_by_id(self, item_id: str) -> Optional[WardrobeItem]:
-        item_data = self._items.get(item_id)
-        if item_data:
-            return WardrobeItem(**item_data)
-        return None
+        return self.db.get_item_by_id(item_id)
 
     def create_item(self, item_data: WardrobeItemCreate) -> WardrobeItem:
-        new_id = str(self._next_id)
-        self._next_id += 1
-        item_dict = {"id": new_id, **item_data.model_dump()}
-        self._items[new_id] = item_dict
-        return WardrobeItem(**item_dict)
+        # Generate next ID
+        count = self.db.get_item_count()
+        new_id = str(count + 1)
+        return self.db.create_item(new_id, item_data)
 
-    def update_item(self, item_id: str, item_data: WardrobeItemUpdate) -> Optional[WardrobeItem]:
-        if item_id not in self._items:
-            return None
-        update_data = item_data.model_dump(exclude_unset=True)
-        self._items[item_id].update(update_data)
-        return WardrobeItem(**self._items[item_id])
+    def update_item(
+        self, item_id: str, item_data: WardrobeItemUpdate
+    ) -> Optional[WardrobeItem]:
+        return self.db.update_item(item_id, item_data)
 
     def delete_item(self, item_id: str) -> bool:
-        if item_id not in self._items:
-            return False
-        del self._items[item_id]
-        return True
+        # Also delete images
+        self.db.delete_images_for_item(item_id)
+        return self.db.delete_item(item_id)
 
     def rename_item_id(self, old_id: str, new_id: str) -> bool:
-        """Rename an item's ID. Returns False if old_id not found or new_id exists."""
-        if new_id in self._items:
+        if self.db.get_item_by_id(new_id) is not None:
             return False
-        if old_id not in self._items:
+        if not self.db.rename_item_id(old_id, new_id):
             return False
-
-        # Move item data to new key
-        item_data = self._items.pop(old_id)
-        item_data["id"] = new_id
-        self._items[new_id] = item_data
+        self.db.rename_item_images(old_id, new_id)
         return True
 
 
 _sheets_service: Optional[SheetsService] = None
-_mock_service: Optional[MockSheetsService] = None
+_dummy_service: Optional[DummyModeService] = None
 
 
-def get_sheets_service(settings: Settings) -> SheetsService | MockSheetsService:
-    global _sheets_service, _mock_service
+def get_sheets_service(settings: Settings) -> SheetsService | DummyModeService:
+    global _sheets_service, _dummy_service
 
     if settings.dummy_mode:
-        if _mock_service is None:
-            _mock_service = MockSheetsService()
-        return _mock_service
+        if _dummy_service is None:
+            _dummy_service = DummyModeService(settings)
+        return _dummy_service
 
     if _sheets_service is None:
         _sheets_service = SheetsService(settings)

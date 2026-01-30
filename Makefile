@@ -1,4 +1,4 @@
-.PHONY: build test lint clean run run-dummy stop archive
+.PHONY: build test lint clean run run-dummy stop archive sync backup restore check-db
 
 # Dummy values for commands that don't need real credentials
 DUMMY_ENV = API_KEY=dummy GOOGLE_SHEET_ID=dummy GOOGLE_SHEETS_CREDENTIALS_JSON='{}'
@@ -40,13 +40,13 @@ run-dummy:
 	@API_KEY=dummy DUMMY_MODE=true docker compose up -d wardrobe-api
 	@echo "Running in dummy mode at http://localhost:8000"
 
-# Stop the API server
+# Stop all containers (including test/lint profiles)
 stop:
-	@$(DUMMY_ENV) docker compose down
+	@$(DUMMY_ENV) docker compose --profile test --profile lint down
 
 # Full cleanup: stop containers, remove volumes and images
 clean:
-	@$(DUMMY_ENV) docker compose down -v
+	@$(DUMMY_ENV) docker compose --profile test --profile lint down -v
 	@docker images --filter "reference=wardrobe-architect-*" -q | xargs docker rmi 2>/dev/null || true
 
 # Create a tar.gz archive of the project (compatible with Linux/Ubuntu)
@@ -59,6 +59,7 @@ archive:
 		--exclude='._*' \
 		--exclude='*.pyc' \
 		--exclude='.git' \
+		--exclude='.claude*' \
 		--exclude='htmlcov' \
 		--exclude='images/*' \
 		--exclude='.pytest_cache' \
@@ -66,3 +67,27 @@ archive:
 		--exclude='*.egg-info' \
 		wardrobe-architect
 	@echo "Created ../wardrobe-architect.tar.gz"
+
+# Sync data from Google Sheets to PostgreSQL
+sync:
+	@$(DUMMY_ENV) docker compose exec wardrobe-api python -m app.cli sync
+
+# Check database connection
+check-db:
+	@$(DUMMY_ENV) docker compose exec wardrobe-api python -m app.cli check-db
+
+# Backup database and images
+backup:
+	@./scripts/backup.sh
+
+# Restore from backup
+# Usage: make restore FILE=backups/wardrobe-backup-YYYYMMDD-HHMMSS.tar.gz
+restore:
+	@if [ -z "$(FILE)" ]; then \
+		echo "Usage: make restore FILE=backups/wardrobe-backup-YYYYMMDD-HHMMSS.tar.gz"; \
+		echo ""; \
+		echo "Available backups:"; \
+		ls -la backups/*.tar.gz 2>/dev/null || echo "  No backups found"; \
+		exit 1; \
+	fi
+	@./scripts/restore.sh $(FILE)

@@ -12,11 +12,13 @@ TEST_API_KEY = "test-api-key-12345"
 
 @pytest.fixture
 def test_settings(tmp_path):
+    """Settings with invalid database URL to prevent DB connections in unit tests."""
     return Settings(
         api_key=TEST_API_KEY,
         google_sheets_credentials_json="{}",
         google_sheet_id="fake-sheet-id",
         images_dir=str(tmp_path / "images"),
+        database_url="postgresql://invalid:invalid@localhost:9999/invalid",
     )
 
 
@@ -50,7 +52,10 @@ class TestAPIKeyAuthentication:
     def test_health_endpoint_no_auth_required(self, auth_client):
         response = auth_client.get("/health")
         assert response.status_code == 200
-        assert response.json() == {"status": "healthy"}
+        data = response.json()
+        assert data["status"] in ["healthy", "degraded"]
+        assert "database" in data
+        assert "disk" in data
 
     def test_valid_api_key(self, auth_client):
         response = auth_client.get(

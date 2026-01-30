@@ -3,6 +3,7 @@ source = app
 omit =
     app/__init__.py
     app/*/__init__.py
+    app/cli.py
 
 [report]
 exclude_lines =

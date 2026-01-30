@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👔</text></svg>">
+    <title>Database Browser - Wardrobe Admin</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e5e5e5;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid #333;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .nav-links a {
+            color: #60a5fa;
+            text-decoration: none;
+            font-size: 0.875rem;
+        }
+
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .filters {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filters input, .filters select {
+            padding: 0.5rem 1rem;
+            border: 1px solid #333;
+            border-radius: 6px;
+            background: #1a1a1a;
+            color: #e5e5e5;
+            font-size: 0.875rem;
+        }
+
+        .filters input {
+            min-width: 250px;
+        }
+
+        .filters button {
+            padding: 0.5rem 1rem;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+
+        .filters button:hover {
+            background: #1d4ed8;
+        }
+
+        .result-count {
+            color: #888;
+            font-size: 0.875rem;
+        }
+
+        .section {
+            background: #1a1a1a;
+            border-radius: 8px;
+            border: 1px solid #333;
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+
+        .section-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #333;
+            font-weight: 600;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid #262626;
+        }
+
+        th {
+            background: #0d0d0d;
+            color: #888;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 500;
+        }
+
+        tr:hover {
+            background: #262626;
+        }
+
+        .id-cell {
+            font-family: monospace;
+            color: #60a5fa;
+        }
+
+        .category-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            background: rgba(99, 102, 241, 0.2);
+            color: #818cf8;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+
+        .image-count {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            background: rgba(74, 222, 128, 0.1);
+            color: #4ade80;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+
+        .image-count.none {
+            background: rgba(248, 113, 113, 0.1);
+            color: #f87171;
+        }
+
+        .notes-cell {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #888;
+            font-size: 0.875rem;
+        }
+
+        .sync-table td {
+            font-size: 0.875rem;
+        }
+
+        .status-success {
+            color: #4ade80;
+        }
+
+        .status-error {
+            color: #f87171;
+        }
+
+        .empty-state {
+            padding: 3rem;
+            text-align: center;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .filters {
+                flex-direction: column;
+            }
+
+            .filters input {
+                min-width: 100%;
+            }
+
+            table {
+                font-size: 0.875rem;
+            }
+
+            th, td {
+                padding: 0.5rem;
+            }
+
+            .notes-cell {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Database Browser</h1>
+        <nav class="nav-links">
+            <a href="/admin">Dashboard</a>
+            <a href="/admin/logs">Logs</a>
+            <a href="/admin/coverage">Coverage</a>
+            <a href="/admin/logout">Logout</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <form class="filters" method="GET" action="/admin/db">
+            <input type="text" name="search" placeholder="Search items..." value="{{ search }}">
+            <select name="category">
+                <option value="">All Categories</option>
+                {% for cat in categories %}
+                <option value="{{ cat }}" {% if cat == selected_category %}selected{% endif %}>{{ cat }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit">Filter</button>
+            <span class="result-count">{{ total_items }} items</span>
+        </form>
+
+        <div class="section">
+            <div class="section-header">Wardrobe Items</div>
+            {% if items %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Item</th>
+                        <th>Category</th>
+                        <th>Color</th>
+                        <th>Fit</th>
+                        <th>Season</th>
+                        <th>Images</th>
+                        <th class="notes-cell">Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in items %}
+                    <tr>
+                        <td class="id-cell">{{ row.item.id }}</td>
+                        <td>{{ row.item.item }}</td>
+                        <td><span class="category-badge">{{ row.item.category }}</span></td>
+                        <td>{{ row.item.color }}</td>
+                        <td>{{ row.item.fit }}</td>
+                        <td>{{ row.item.season }}</td>
+                        <td>
+                            <span class="image-count {% if row.images|length == 0 %}none{% endif %}">
+                                {{ row.images|length }}
+                            </span>
+                        </td>
+                        <td class="notes-cell" title="{{ row.item.notes or '' }}">{{ row.item.notes or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                No items found. {% if search or selected_category %}Try adjusting your filters.{% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <div class="section-header">Sync History</div>
+            {% if sync_history %}
+            <table class="sync-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Source</th>
+                        <th>Items</th>
+                        <th>Status</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sync in sync_history %}
+                    <tr>
+                        <td>{{ sync.synced_at }}</td>
+                        <td>{{ sync.source or '-' }}</td>
+                        <td>{{ sync.items_synced }}</td>
+                        <td class="{% if sync.status == 'success' %}status-success{% else %}status-error{% endif %}">
+                            {{ sync.status }}
+                        </td>
+                        <td>{{ sync.error_message or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                No sync history available.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

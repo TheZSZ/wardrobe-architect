@@ -138,6 +138,10 @@ async def get_image(
         path=file_path,
         media_type=f"image/{file_path.suffix.lstrip('.')}",
         filename=file_path.name,
+        headers={
+            "Cache-Control": "public, max-age=604800",  # 7 days
+            "ETag": f'"{image_id}"',
+        },
     )
 
 
