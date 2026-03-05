@@ -25,6 +25,7 @@ services:
     networks:
       - wardrobe-net
     restart: unless-stopped
+    command: ["/bin/sh", "-c", "mkdir -p /var/cache/nginx/images && nginx -g 'daemon off;'"]
 
   wardrobe-api:
     build:
@@ -37,12 +38,13 @@ services:
     expose:
       - "8000"
     ports:
-      - "8000:8000"  # Keep direct access for development
+      - "127.0.0.1:8000:8000"  # Localhost only, force traffic through nginx
     volumes:
       - ./images:/app/images
       - ./htmlcov:/app/htmlcov:ro
       - ./logs:/var/log
       - ./logs/nginx:/var/log/nginx:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # For docker logs access
     environment:
       - API_KEY=${API_KEY:-dummy}
       - GOOGLE_SHEETS_CREDENTIALS_JSON=${GOOGLE_SHEETS_CREDENTIALS_JSON}
@@ -51,12 +53,40 @@ services:
       - IMAGES_DIR=/app/images
       - DATABASE_URL=postgresql://wardrobe:${DB_PASSWORD:-wardrobe}@db:5432/wardrobe
       - SYNC_ON_STARTUP=${SYNC_ON_STARTUP:-false}
+      # Multi-user auth settings
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - DEV_MODE=${DEV_MODE:-false}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      - APPLE_OAUTH_CLIENT_ID=${APPLE_OAUTH_CLIENT_ID:-}
+      # ClamAV virus scanning
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
+      - CLAMAV_ENABLED=${CLAMAV_ENABLED:-true}
     depends_on:
       db:
+        condition: service_healthy
+      clamav:
         condition: service_healthy
     networks:
       - wardrobe-net
     restart: unless-stopped
+
+  clamav:
+    image: clamav/clamav:stable
+    platform: linux/amd64
+    container_name: wardrobe-clamav
+    volumes:
+      - clamav-db:/var/lib/clamav
+    networks:
+      - wardrobe-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # ClamAV needs time to load virus definitions
 
   db:
     image: postgres:16-alpine
@@ -148,3 +178,5 @@ volumes:
     name: wardrobe-db
   wardrobe-cache:
     name: wardrobe-cache
+  clamav-db:
+    name: wardrobe-clamav-db

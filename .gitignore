@@ -1,5 +1,6 @@
 # Environment and secrets
 .env
+.env.*
 *.env
 
 # Python
@@ -7,22 +8,27 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
+.eggs/
+*.egg
 .venv/
 venv/
+.python-version
 
 # Testing
 .pytest_cache/
 .mypy_cache/
 htmlcov/
 .coverage
+.coverage.*
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
 
-# Docker / Runtime data
+# Docker / Runtime data (user-specific, not in repo)
 images/
 logs/
 backups/

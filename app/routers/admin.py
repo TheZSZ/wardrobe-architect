@@ -6,7 +6,7 @@ from typing import Optional
 
 import psutil
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, Form, Cookie
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app.config import Settings, get_settings
@@ -30,10 +30,20 @@ def verify_admin_session(
     admin_token: Optional[str] = Cookie(None),
     settings: Settings = Depends(get_settings),
 ) -> bool:
-    """Verify admin session from cookie."""
+    """Verify admin session from cookie.
+
+    Uses ADMIN_PASSWORD for admin panel access.
+    Falls back to api_key for backwards compatibility if admin_password not set.
+    """
     if not admin_token:
         return False
-    return admin_token == settings.api_key
+
+    # Use admin_password if set, otherwise fall back to api_key
+    expected_password = settings.admin_password or settings.api_key
+    if not expected_password:
+        return False
+
+    return admin_token == expected_password
 
 
 def get_sheets(settings: Settings = Depends(get_settings)) -> SheetsService:
@@ -55,18 +65,19 @@ async def login_page(
 @router.post("/login")
 async def login(
     request: Request,
-    api_key: str = Form(...),
+    password: str = Form(..., alias="api_key"),  # Keep form field name for backwards compat
     next: Optional[str] = Form(None),
     settings: Settings = Depends(get_settings),
 ):
-    """Process login form."""
-    if api_key == settings.api_key:
+    """Process admin login form."""
+    expected_password = settings.admin_password or settings.api_key
+    if expected_password and password == expected_password:
         # Redirect to next URL or default to /admin
         redirect_url = next if next and next.startswith("/admin") else "/admin"
         response = RedirectResponse(url=redirect_url, status_code=303)
         response.set_cookie(
             key="admin_token",
-            value=api_key,
+            value=password,
             httponly=True,
             max_age=86400,  # 24 hours
             samesite="strict",
@@ -99,12 +110,15 @@ async def admin_dashboard(
     if not authenticated:
         return RedirectResponse(url="/admin/login", status_code=303)
 
+    from app.services.storage import get_storage_service
+
     db = get_database_service(settings)
+    storage = get_storage_service(settings)
 
     # Get stats
     try:
         item_count = db.get_item_count()
-        image_count = db.get_image_count()
+        image_count = storage.count_images_on_disk()
         last_sync = db.get_last_sync()
         db_connected = db.is_connected()
     except Exception as e:
@@ -145,6 +159,22 @@ async def admin_dashboard(
             "recent_logs": recent_logs,
             "dummy_mode": settings.dummy_mode,
         },
+    )
+
+
+@router.get("/health", response_class=HTMLResponse)
+async def health_dashboard(
+    request: Request,
+    authenticated: bool = Depends(verify_admin_session),
+):
+    """Render health monitoring dashboard."""
+    if not authenticated:
+        return RedirectResponse(url="/admin/login?next=/admin/health", status_code=303)
+
+    return templates.TemplateResponse(
+        request,
+        "admin_health.html",
+        {},
     )
 
 
@@ -261,34 +291,67 @@ async def get_stats(
     }
 
 
+# Log source definitions
+LOG_SOURCES = {
+    # Docker containers
+    "wardrobe-api": {"type": "docker", "label": "wardrobe-api", "group": "Docker Containers"},
+    "wardrobe-db": {"type": "docker", "label": "wardrobe-db", "group": "Docker Containers"},
+    "wardrobe-clamav": {"type": "docker", "label": "wardrobe-clamav", "group": "Docker Containers"},
+    "wardrobe-nginx": {"type": "docker", "label": "wardrobe-nginx", "group": "Docker Containers"},
+}
+
+
+def _read_docker_logs(
+    container: str, lines: int, search: Optional[str]
+) -> tuple[list[str], Optional[str]]:
+    """Read logs from a Docker container."""
+    import subprocess
+
+    try:
+        # Use 2>&1 to merge stderr into stdout so we get all logs together
+        result = subprocess.run(
+            f"docker logs --tail {lines} {container} 2>&1",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        output = result.stdout
+        all_lines = output.strip().split("\n") if output.strip() else []
+        all_lines.reverse()
+
+        if search:
+            all_lines = [line for line in all_lines if search.lower() in line.lower()]
+
+        return all_lines, None
+
+    except subprocess.TimeoutExpired:
+        return [], "Timeout reading Docker logs"
+    except FileNotFoundError:
+        return [], "Docker CLI not available"
+    except Exception as e:
+        logger.error(f"Docker logs error: {e}")
+        return [], f"Error reading Docker logs: {e}"
+
+
 @router.get("/logs", response_class=HTMLResponse)
 async def view_logs(
     request: Request,
+    source: str = Query("wardrobe-api"),
     lines: int = Query(100, ge=1, le=1000),
     search: Optional[str] = None,
-    settings: Settings = Depends(get_settings),
     authenticated: bool = Depends(verify_admin_session),
 ):
-    """View log file with optional search."""
+    """View logs from Docker containers."""
     if not authenticated:
         return RedirectResponse(url="/admin/login", status_code=303)
 
-    log_file = Path(settings.log_file)
-    log_lines = []
+    # Validate source
+    if source not in LOG_SOURCES:
+        source = "wardrobe-api"  # Default
 
-    if log_file.exists():
-        try:
-            with open(log_file, 'r') as f:
-                all_lines = f.readlines()
-
-            # Filter by search term if provided
-            if search:
-                all_lines = [line for line in all_lines if search.lower() in line.lower()]
-
-            # Get last N lines, strip whitespace, newest first
-            log_lines = [line.strip() for line in reversed(all_lines[-lines:])]
-        except Exception as e:
-            logger.error(f"Error reading logs: {e}")
+    source_info = LOG_SOURCES[source]
+    log_lines, error_message = _read_docker_logs(source, lines, search)
 
     return templates.TemplateResponse(
         request,
@@ -298,28 +361,11 @@ async def view_logs(
             "lines": lines,
             "search": search or "",
             "total_lines": len(log_lines),
+            "source": source,
+            "sources": LOG_SOURCES,
+            "source_label": source_info["label"],
+            "error_message": error_message,
         },
-    )
-
-
-@router.get("/logs/download")
-async def download_logs(
-    settings: Settings = Depends(get_settings),
-    authenticated: bool = Depends(verify_admin_session),
-):
-    """Download the full log file."""
-    if not authenticated:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    log_file = Path(settings.log_file)
-
-    if not log_file.exists():
-        raise HTTPException(status_code=404, detail="Log file not found")
-
-    return FileResponse(
-        path=log_file,
-        filename=f"wardrobe-api-{datetime.now().strftime('%Y%m%d')}.log",
-        media_type="text/plain",
     )
 
 
@@ -351,99 +397,6 @@ async def trigger_sync(
     except Exception as e:
         logger.error(f"Sync failed: {e}")
         raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
-
-
-@router.get("/logs/api")
-async def get_logs_json(
-    lines: int = Query(100, ge=1, le=1000),
-    search: Optional[str] = None,
-    settings: Settings = Depends(get_settings),
-    authenticated: bool = Depends(verify_admin_session),
-):
-    """Get log lines as JSON (for AJAX refresh)."""
-    if not authenticated:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    log_file = Path(settings.log_file)
-    log_lines = []
-
-    if log_file.exists():
-        try:
-            with open(log_file, 'r') as f:
-                all_lines = f.readlines()
-
-            if search:
-                all_lines = [line for line in all_lines if search.lower() in line.lower()]
-
-            log_lines = [line.strip() for line in reversed(all_lines[-lines:])]
-        except Exception as e:
-            logger.error(f"Error reading logs: {e}")
-
-    return {"lines": log_lines, "count": len(log_lines)}
-
-
-NGINX_LOG_DIR = Path("/var/log/nginx")
-
-
-@router.get("/logs/nginx", response_class=HTMLResponse)
-async def view_nginx_logs(
-    request: Request,
-    log_type: str = Query("access", pattern="^(access|error)$"),
-    lines: int = Query(100, ge=1, le=1000),
-    search: Optional[str] = None,
-    authenticated: bool = Depends(verify_admin_session),
-):
-    """View nginx access or error logs."""
-    if not authenticated:
-        return RedirectResponse(url="/admin/login", status_code=303)
-
-    log_file = NGINX_LOG_DIR / f"{log_type}.log"
-    log_lines = []
-
-    if log_file.exists():
-        try:
-            with open(log_file, 'r') as f:
-                all_lines = f.readlines()
-
-            if search:
-                all_lines = [line for line in all_lines if search.lower() in line.lower()]
-
-            log_lines = [line.strip() for line in reversed(all_lines[-lines:])]
-        except Exception as e:
-            logger.error(f"Error reading nginx logs: {e}")
-
-    return templates.TemplateResponse(
-        request,
-        "admin_logs_nginx.html",
-        {
-            "log_lines": log_lines,
-            "lines": lines,
-            "search": search or "",
-            "total_lines": len(log_lines),
-            "log_type": log_type,
-        },
-    )
-
-
-@router.get("/logs/nginx/download")
-async def download_nginx_logs(
-    log_type: str = Query("access", pattern="^(access|error)$"),
-    authenticated: bool = Depends(verify_admin_session),
-):
-    """Download nginx log file."""
-    if not authenticated:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    log_file = NGINX_LOG_DIR / f"{log_type}.log"
-
-    if not log_file.exists():
-        raise HTTPException(status_code=404, detail=f"Nginx {log_type} log not found")
-
-    return FileResponse(
-        path=log_file,
-        filename=f"nginx-{log_type}-{datetime.now().strftime('%Y%m%d')}.log",
-        media_type="text/plain",
-    )
 
 
 @router.get("/coverage")
@@ -514,4 +467,274 @@ async def admin_redoc(
     return get_redoc_html(
         openapi_url="/openapi.json",
         title="Wardrobe Architect API - ReDoc",
+    )
+
+
+# ==================== User Management ====================
+
+
+@router.get("/users", response_class=HTMLResponse)
+async def list_users(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    authenticated: bool = Depends(verify_admin_session),
+):
+    """List all users."""
+    if not authenticated:
+        return RedirectResponse(url="/admin/login?next=/admin/users", status_code=303)
+
+    from app.services.user_service import get_user_service
+
+    user_service = get_user_service(settings)
+    users = user_service.get_all_users()
+
+    return templates.TemplateResponse(
+        request,
+        "admin_users.html",
+        {"users": users, "total_users": len(users)},
+    )
+
+
+@router.get("/users/new", response_class=HTMLResponse)
+async def new_user_form(
+    request: Request,
+    error: Optional[str] = None,
+    authenticated: bool = Depends(verify_admin_session),
+):
+    """Show form to create new user."""
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    return templates.TemplateResponse(
+        request,
+        "admin_user_new.html",
+        {"error": error},
+    )
+
+
+@router.post("/users/new")
+async def create_user(
+    request: Request,
+    email: str = Form(...),
+    passcode: str = Form(...),
+    display_name: Optional[str] = Form(None),
+    settings: Settings = Depends(get_settings),
+    authenticated: bool = Depends(verify_admin_session),
+):
+    """Create a new user."""
+    if not authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if len(passcode) < 8:
+        return templates.TemplateResponse(
+            request,
+            "admin_user_new.html",
+            {"error": "Passcode must be at least 8 characters"},
+            status_code=400,
+        )
+
+    from app.models.user import UserCreate
+    from app.services.user_service import get_user_service
+
+    user_service = get_user_service(settings)
+
+    try:
+        user = user_service.create_user(
+            UserCreate(email=email, passcode=passcode, display_name=display_name)
+        )
+        logger.info(f"Admin created user: {email}")
+        return RedirectResponse(
+            url=f"/admin/users/{user.id}?success=User+created",
+            status_code=303,
+        )
+    except Exception as e:
+        logger.error(f"Error creating user: {e}")
+        return templates.TemplateResponse(
+            request,
+            "admin_user_new.html",
+            {"error": str(e)},
+            status_code=400,
+        )
+
+
+@router.get("/users/{user_id}", response_class=HTMLResponse)
+async def user_detail(
+    request: Request,
+    user_id: str,
+    success: Optional[str] = None,
+    error: Optional[str] = None,
+    settings: Settings = Depends(get_settings),
+    authenticated: bool = Depends(verify_admin_session),
+):
+    """View user details and API keys."""
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    from uuid import UUID
+
+    from app.services.user_service import get_user_service
+
+    user_service = get_user_service(settings)
+
+    try:
+        user = user_service.get_user_by_id(UUID(user_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    api_keys = user_service.get_api_keys_for_user(user.id)
+    oauth_links = user_service.get_oauth_links_for_user(user.id)
+
+    return templates.TemplateResponse(
+        request,
+        "admin_user_detail.html",
+        {
+            "user": user,
+            "api_keys": api_keys,
+            "oauth_links": oauth_links,
+            "success": success,
+            "error": error,
+        },
+    )
+
+
+@router.post("/users/{user_id}/api-key")
+async def create_api_key_for_user(
+    request: Request,
+    user_id: str,
+    name: Optional[str] = Form(None),
+    settings: Settings = Depends(get_settings),
+    authenticated: bool = Depends(verify_admin_session),
+):
+    """Generate a new API key for a user."""
+    if not authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from uuid import UUID
+
+    from app.models.user import APIKeyCreate
+    from app.services.user_service import get_user_service
+
+    user_service = get_user_service(settings)
+
+    try:
+        uid = UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+
+    key_response = user_service.create_api_key(uid, APIKeyCreate(name=name))
+    logger.info(f"Admin created API key for user {user_id}: {key_response.key[:8]}...")
+
+    # Return the key in a template that shows it once
+    return templates.TemplateResponse(
+        request,
+        "admin_api_key_created.html",
+        {"api_key": key_response.key, "user_id": user_id},
+    )
+
+
+@router.post("/users/{user_id}/api-key/{key_id}/revoke")
+async def revoke_api_key(
+    user_id: str,
+    key_id: str,
+    settings: Settings = Depends(get_settings),
+    authenticated: bool = Depends(verify_admin_session),
+):
+    """Revoke an API key."""
+    if not authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from uuid import UUID
+
+    from app.services.user_service import get_user_service
+
+    user_service = get_user_service(settings)
+
+    try:
+        user_service.revoke_api_key(UUID(key_id))
+        logger.info(f"Admin revoked API key {key_id} for user {user_id}")
+    except Exception as e:
+        logger.error(f"Error revoking API key: {e}")
+
+    return RedirectResponse(
+        url=f"/admin/users/{user_id}?success=API+key+revoked",
+        status_code=303,
+    )
+
+
+@router.post("/users/{user_id}/reset-passcode")
+async def reset_user_passcode(
+    request: Request,
+    user_id: str,
+    new_passcode: str = Form(...),
+    settings: Settings = Depends(get_settings),
+    authenticated: bool = Depends(verify_admin_session),
+):
+    """Reset a user's passcode."""
+    if not authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if len(new_passcode) < 8:
+        return RedirectResponse(
+            url=f"/admin/users/{user_id}?error=Passcode+must+be+8+characters",
+            status_code=303,
+        )
+
+    from uuid import UUID
+
+    from app.services.user_service import get_user_service
+
+    user_service = get_user_service(settings)
+
+    try:
+        user_service.reset_passcode(UUID(user_id), new_passcode)
+        logger.info(f"Admin reset passcode for user {user_id}")
+    except Exception as e:
+        logger.error(f"Error resetting passcode: {e}")
+        return RedirectResponse(
+            url=f"/admin/users/{user_id}?error=Failed+to+reset+passcode",
+            status_code=303,
+        )
+
+    return RedirectResponse(
+        url=f"/admin/users/{user_id}?success=Passcode+reset",
+        status_code=303,
+    )
+
+
+@router.post("/users/{user_id}/toggle-active")
+async def toggle_user_active(
+    user_id: str,
+    settings: Settings = Depends(get_settings),
+    authenticated: bool = Depends(verify_admin_session),
+):
+    """Enable or disable a user."""
+    if not authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from uuid import UUID
+
+    from app.models.user import UserUpdate
+    from app.services.user_service import get_user_service
+
+    user_service = get_user_service(settings)
+
+    try:
+        uid = UUID(user_id)
+        user = user_service.get_user_by_id(uid)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Toggle active status
+        user_service.update_user(uid, UserUpdate(is_active=not user.is_active))
+        status = "enabled" if not user.is_active else "disabled"
+        logger.info(f"Admin {status} user {user_id}")
+    except Exception as e:
+        logger.error(f"Error toggling user active: {e}")
+
+    return RedirectResponse(
+        url=f"/admin/users/{user_id}?success=User+{status}",
+        status_code=303,
     )

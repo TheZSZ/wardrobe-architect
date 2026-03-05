@@ -36,6 +36,12 @@
             font-size: 0.875rem;
         }
 
+        .header-actions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
@@ -224,22 +230,6 @@
             color: #f87171;
         }
 
-        .nav-links {
-            display: flex;
-            gap: 1rem;
-            margin-top: 0.5rem;
-        }
-
-        .nav-links a {
-            color: #60a5fa;
-            text-decoration: none;
-            font-size: 0.875rem;
-        }
-
-        .nav-links a:hover {
-            text-decoration: underline;
-        }
-
         @media (max-width: 768px) {
             .container {
                 padding: 1rem;
@@ -262,20 +252,16 @@
 </head>
 <body>
     <header>
-        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <h1>Admin Dashboard</h1>
                 <p>Wardrobe Architect System Administration</p>
             </div>
-            <a href="/admin/logout" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.75rem;">Logout</a>
+            <div class="header-actions">
+                <a href="/" class="btn btn-secondary">Wardrobe</a>
+                <a href="/admin/logout" class="btn btn-secondary">Logout</a>
+            </div>
         </div>
-        <nav class="nav-links">
-            <a href="/">Wardrobe</a>
-            <a href="/admin/db">Database</a>
-            <a href="/admin/logs">Logs</a>
-            <a href="/admin/coverage">Coverage</a>
-            <a href="/admin/docs">API Docs</a>
-        </nav>
     </header>
 
     <div class="container">
@@ -304,12 +290,15 @@
         </div>
 
         <div class="actions">
-            <button class="btn btn-primary" id="sync-btn" onclick="triggerSync()" {% if dummy_mode %}disabled{% endif %}>
+            <a href="/admin/users" class="btn btn-primary">Manage Users</a>
+            <button class="btn btn-secondary" id="sync-btn" onclick="triggerSync()" {% if dummy_mode %}disabled{% endif %}>
                 Sync from Sheets
             </button>
-            <a href="/admin/logs" class="btn btn-secondary">API Logs</a>
-            <a href="/admin/logs/nginx" class="btn btn-secondary">Nginx Logs</a>
+            <a href="/admin/logs" class="btn btn-secondary">Logs</a>
+            <a href="/admin/db" class="btn btn-secondary">Database</a>
+            <a href="/admin/health" class="btn btn-secondary">Health</a>
             <a href="/admin/coverage" class="btn btn-secondary">Coverage Report</a>
+            <a href="/admin/docs" class="btn btn-secondary">API Docs</a>
         </div>
 
         {% if dummy_mode %}
@@ -340,7 +329,7 @@
         <div class="section">
             <div class="section-header">
                 <h2>Recent Logs</h2>
-                <a href="/admin/logs" class="btn btn-secondary" style="padding: 0.5rem 1rem;">View All</a>
+                <a href="/admin/logs" class="btn btn-secondary">View All</a>
             </div>
             <div class="section-content">
                 <div class="log-viewer">{%- for line in recent_logs %}

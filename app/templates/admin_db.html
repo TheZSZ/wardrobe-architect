@@ -31,20 +31,38 @@
             font-weight: 600;
         }
 
-        .nav-links {
-            display: flex;
-            gap: 1rem;
-            margin-top: 0.5rem;
-        }
-
-        .nav-links a {
-            color: #60a5fa;
-            text-decoration: none;
+        header p {
+            color: #888;
             font-size: 0.875rem;
         }
 
-        .nav-links a:hover {
-            text-decoration: underline;
+        .header-actions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: #e5e5e5;
+        }
+
+        .btn-secondary:hover {
+            background: #404040;
         }
 
         .container {
@@ -217,13 +235,15 @@
 </head>
 <body>
     <header>
-        <h1>Database Browser</h1>
-        <nav class="nav-links">
-            <a href="/admin">Dashboard</a>
-            <a href="/admin/logs">Logs</a>
-            <a href="/admin/coverage">Coverage</a>
-            <a href="/admin/logout">Logout</a>
-        </nav>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h1>Database Browser</h1>
+                <p>Browse wardrobe items and sync history</p>
+            </div>
+            <div class="header-actions">
+                <a href="/admin" class="btn btn-secondary">Back to Dashboard</a>
+            </div>
+        </div>
     </header>
 
     <div class="container">

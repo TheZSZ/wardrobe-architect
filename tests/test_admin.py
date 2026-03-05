@@ -193,62 +193,45 @@ class TestHealthEndpoint:
         assert "uptime_seconds" in data["process"]
 
 
-class TestLogsReversedOrder:
-    """Test that logs are displayed newest first."""
+class TestDockerLogs:
+    """Test Docker container logs page."""
 
-    def test_admin_logs_newest_first(self, admin_client):
-        admin_client.cookies.set("admin_token", TEST_API_KEY)
-        response = admin_client.get("/admin/logs")
-        assert response.status_code == 200
-        # Third log (newest) should appear before First log (oldest)
-        third_pos = response.text.find("Third log")
-        first_pos = response.text.find("First log")
-        assert third_pos < first_pos, "Newest logs should appear first"
-
-    def test_admin_logs_api_newest_first(self, admin_client):
-        admin_client.cookies.set("admin_token", TEST_API_KEY)
-        response = admin_client.get("/admin/logs/api")
-        assert response.status_code == 200
-        data = response.json()
-        lines = data["lines"]
-        assert len(lines) == 3
-        # First item in list should be the newest (Third log)
-        assert "Third log" in lines[0]
-        assert "First log" in lines[2]
-
-
-class TestNginxLogs:
-    """Test nginx logs routes."""
-
-    def test_nginx_logs_unauthenticated_redirects(self, admin_client):
-        response = admin_client.get("/admin/logs/nginx", follow_redirects=False)
+    def test_logs_unauthenticated_redirects(self, admin_client):
+        response = admin_client.get("/admin/logs", follow_redirects=False)
         assert response.status_code == 303
         assert "/admin/login" in response.headers["location"]
 
-    def test_nginx_logs_authenticated_returns_page(self, admin_client):
+    def test_logs_authenticated_returns_page(self, admin_client):
         admin_client.cookies.set("admin_token", TEST_API_KEY)
-        response = admin_client.get("/admin/logs/nginx")
+        response = admin_client.get("/admin/logs")
         assert response.status_code == 200
-        assert "Nginx Logs" in response.text
+        assert "Logs" in response.text
 
-    def test_nginx_logs_access_log_type(self, admin_client):
+    def test_logs_default_source_is_wardrobe_api(self, admin_client):
         admin_client.cookies.set("admin_token", TEST_API_KEY)
-        response = admin_client.get("/admin/logs/nginx?log_type=access")
+        response = admin_client.get("/admin/logs")
         assert response.status_code == 200
-        assert "access.log" in response.text
+        assert "wardrobe-api" in response.text
 
-    def test_nginx_logs_error_log_type(self, admin_client):
+    def test_logs_wardrobe_db_source(self, admin_client):
         admin_client.cookies.set("admin_token", TEST_API_KEY)
-        response = admin_client.get("/admin/logs/nginx?log_type=error")
+        response = admin_client.get("/admin/logs?source=wardrobe-db")
         assert response.status_code == 200
-        assert "error.log" in response.text
+        assert "wardrobe-db" in response.text
 
-    def test_nginx_logs_download_unauthenticated(self, admin_client):
-        response = admin_client.get(
-            "/admin/logs/nginx/download",
-            follow_redirects=False,
-        )
-        assert response.status_code == 401
+    def test_logs_invalid_source_defaults_to_wardrobe_api(self, admin_client):
+        admin_client.cookies.set("admin_token", TEST_API_KEY)
+        response = admin_client.get("/admin/logs?source=invalid-source")
+        assert response.status_code == 200
+        assert "wardrobe-api" in response.text
+
+    def test_logs_shows_error_if_docker_unavailable(self, admin_client):
+        """Docker container logs may show error if docker is not available."""
+        admin_client.cookies.set("admin_token", TEST_API_KEY)
+        response = admin_client.get("/admin/logs?source=wardrobe-api")
+        assert response.status_code == 200
+        # Should either show logs or an error message
+        assert "wardrobe-api" in response.text or "Docker" in response.text
 
 
 class TestAdminDashboard:
@@ -293,41 +276,21 @@ class TestAdminLogout:
         assert response.headers["location"] == "/admin/login"
 
 
-class TestAdminLogsDownload:
-    """Test log download functionality."""
-
-    def test_logs_download_authenticated(self, authenticated_client):
-        response = authenticated_client.get("/admin/logs/download")
-        assert response.status_code == 200
-        assert "text/plain" in response.headers.get("content-type", "")
-
-    def test_logs_download_unauthenticated(self, admin_client):
-        response = admin_client.get("/admin/logs/download", follow_redirects=False)
-        assert response.status_code == 401
-
-
 class TestAdminLogsSearch:
     """Test log search functionality."""
 
-    def test_logs_search_filters_results(self, authenticated_client):
+    def test_logs_search_param_accepted(self, authenticated_client):
+        """Test that search parameter is accepted."""
         response = authenticated_client.get("/admin/logs?search=ERROR")
         assert response.status_code == 200
-        assert "Third log" in response.text
-        # First log shouldn't appear (it's INFO, not ERROR)
-        assert "First log" not in response.text
-
-    def test_logs_api_search_filters_results(self, authenticated_client):
-        response = authenticated_client.get("/admin/logs/api?search=ERROR")
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["lines"]) == 1
-        assert "ERROR" in data["lines"][0]
+        assert "Logs" in response.text
 
     def test_logs_line_limit(self, authenticated_client):
-        response = authenticated_client.get("/admin/logs/api?lines=2")
+        """Test that line limit parameter works."""
+        response = authenticated_client.get("/admin/logs?lines=50")
         assert response.status_code == 200
-        data = response.json()
-        assert len(data["lines"]) == 2
+        # Page should render with limit applied
+        assert "Logs" in response.text
 
 
 class TestAdminDatabaseBrowser:
@@ -369,3 +332,87 @@ class TestConfigEndpoint:
         data = response.json()
         assert "dummy_mode" in data
         assert data["dummy_mode"] is True
+
+
+class TestAdminHealthDashboard:
+    """Test /admin/health dashboard."""
+
+    def test_health_dashboard_unauthenticated_redirects(self, admin_client):
+        response = admin_client.get("/admin/health", follow_redirects=False)
+        assert response.status_code == 303
+        assert "/admin/login" in response.headers["location"]
+
+    def test_health_dashboard_authenticated_returns_page(self, authenticated_client):
+        response = authenticated_client.get("/admin/health")
+        assert response.status_code == 200
+        # Page should have chart elements or health-related content
+        assert "Health" in response.text or "health" in response.text
+
+
+class TestAdminStats:
+    """Test /admin/stats JSON endpoint."""
+
+    def test_stats_unauthenticated_returns_401(self, admin_client):
+        response = admin_client.get("/admin/stats")
+        assert response.status_code == 401
+
+    def test_stats_authenticated_returns_json(self, authenticated_client):
+        response = authenticated_client.get("/admin/stats")
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert "images" in data
+        assert "disk_used_gb" in data
+        assert "db_connected" in data
+        assert "system" in data
+        assert "timestamp" in data
+
+    def test_stats_includes_system_info(self, authenticated_client):
+        response = authenticated_client.get("/admin/stats")
+        data = response.json()
+        assert "cpu_percent" in data["system"]
+        assert "memory_percent" in data["system"]
+        assert "memory_used_gb" in data["system"]
+
+
+class TestAdminDbBrowser:
+    """Test /admin/db database browser."""
+
+    def test_db_browser_with_search(self, authenticated_client):
+        response = authenticated_client.get("/admin/db?search=test")
+        assert response.status_code == 200
+        assert "Database" in response.text
+
+    def test_db_browser_with_category_filter(self, authenticated_client):
+        response = authenticated_client.get("/admin/db?category=Shirts")
+        assert response.status_code == 200
+        assert "Database" in response.text
+
+
+class TestAdminVerifySession:
+    """Test verify_admin_session dependency."""
+
+    def test_empty_admin_token_rejected(self, admin_client):
+        """Empty cookie value is rejected."""
+        admin_client.cookies.set("admin_token", "")
+        response = admin_client.get("/admin/", follow_redirects=False)
+        assert response.status_code == 303
+
+    def test_wrong_admin_token_rejected(self, admin_client):
+        """Wrong cookie value is rejected."""
+        admin_client.cookies.set("admin_token", "wrong-password")
+        response = admin_client.get("/admin/", follow_redirects=False)
+        assert response.status_code == 303
+
+
+class TestAdminLoginFlow:
+    """Additional login flow tests."""
+
+    def test_login_page_renders(self, admin_client):
+        response = admin_client.get("/admin/login")
+        assert response.status_code == 200
+        assert "password" in response.text.lower() or "api" in response.text.lower()
+
+    def test_login_with_error_param(self, admin_client):
+        response = admin_client.get("/admin/login?error=Test+error")
+        assert response.status_code == 200

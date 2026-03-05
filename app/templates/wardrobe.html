@@ -905,7 +905,7 @@
     <script>
         const apiKey = localStorage.getItem('apiKey');
         if (!apiKey) {
-            window.location.href = '/';
+            window.location.href = '/login';
         }
 
         const headers = { 'X-API-Key': apiKey, 'Content-Type': 'application/json' };
@@ -1806,7 +1806,10 @@
 
         function logout() {
             localStorage.removeItem('apiKey');
-            window.location.href = '/';
+            // Also clear session by hitting logout endpoint
+            fetch('/logout').finally(() => {
+                window.location.href = '/login';
+            });
         }
 
         // Check if dummy mode and show seed buttons

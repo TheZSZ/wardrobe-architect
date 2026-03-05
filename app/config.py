@@ -22,6 +22,24 @@ class Settings(BaseSettings):
     # Logging settings
     log_file: str = "/var/log/wardrobe-api.log"
 
+    # Admin settings
+    admin_password: str = ""  # Required for admin panel access
+
+    # OAuth settings
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+
+    # Security
+    session_secret_key: str = ""  # For signing session cookies
+
+    # ClamAV virus scanning
+    clamav_host: str = "clamav"
+    clamav_port: int = 3310
+    clamav_enabled: bool = True  # Set to False to skip virus scanning
+
+    # Development mode
+    dev_mode: bool = False  # If True: short sessions, clear OAuth links on startup
+
 
 @lru_cache
 def get_settings() -> Settings:

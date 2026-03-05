@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👔</text></svg>">
+    <title>Health Dashboard - Admin</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e5e5e5;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid #333;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        header p {
+            color: #888;
+            font-size: 0.875rem;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 1.5rem;
+            border: 1px solid #333;
+        }
+
+        .stat-card .label {
+            color: #888;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #4ade80;
+            margin-top: 0.5rem;
+        }
+
+        .stat-card.warning .value {
+            color: #facc15;
+        }
+
+        .stat-card.error .value {
+            color: #f87171;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: #e5e5e5;
+        }
+
+        .btn-secondary:hover {
+            background: #404040;
+        }
+
+        .section {
+            background: #1a1a1a;
+            border-radius: 8px;
+            border: 1px solid #333;
+            margin-bottom: 2rem;
+        }
+
+        .section-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section-header h2 {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .section-content {
+            padding: 1.5rem;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .status-badge.ok {
+            background: rgba(74, 222, 128, 0.1);
+            color: #4ade80;
+        }
+
+        .status-badge.error {
+            background: rgba(248, 113, 113, 0.1);
+            color: #f87171;
+        }
+
+        .status-badge.warning {
+            background: rgba(250, 204, 21, 0.1);
+            color: #facc15;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+
+        .service-card {
+            background: #0d0d0d;
+            border-radius: 6px;
+            padding: 1rem;
+            border: 1px solid #262626;
+        }
+
+        .service-card h3 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .service-card .details {
+            font-size: 0.75rem;
+            color: #888;
+        }
+
+        .service-card .details p {
+            margin: 0.25rem 0;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .chart-card {
+            background: #0d0d0d;
+            border-radius: 6px;
+            padding: 1rem;
+            border: 1px solid #262626;
+        }
+
+        .chart-card h3 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: #e5e5e5;
+        }
+
+        .chart-container-small {
+            position: relative;
+            height: 180px;
+        }
+
+        .last-updated {
+            font-size: 0.75rem;
+            color: #666;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .chart-container {
+                height: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h1>Health Dashboard</h1>
+                <p>System health monitoring and metrics</p>
+            </div>
+            <div class="header-actions">
+                <a href="/admin" class="btn btn-secondary">Back to Dashboard</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-card" id="status-card">
+                <div class="label">Status</div>
+                <div class="value" id="status-value">
+                    <span class="status-badge ok">
+                        <span class="status-dot"></span>
+                        Loading...
+                    </span>
+                </div>
+            </div>
+            <div class="stat-card" id="cpu-card">
+                <div class="label">CPU Usage</div>
+                <div class="value" id="cpu-value">--%</div>
+            </div>
+            <div class="stat-card" id="memory-card">
+                <div class="label">Memory Usage</div>
+                <div class="value" id="memory-value">--%</div>
+            </div>
+            <div class="stat-card" id="disk-card">
+                <div class="label">Disk Usage</div>
+                <div class="value" id="disk-value">--%</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2>Services</h2>
+            </div>
+            <div class="section-content">
+                <div class="services-grid">
+                    <div class="service-card" id="db-service">
+                        <h3>
+                            Database
+                            <span class="status-badge ok" id="db-status">
+                                <span class="status-dot"></span>
+                                Loading...
+                            </span>
+                        </h3>
+                        <div class="details">
+                            <p>Items: <span id="db-items">--</span></p>
+                            <p>Images: <span id="db-images">--</span></p>
+                        </div>
+                    </div>
+                    <div class="service-card" id="clamav-service">
+                        <h3>
+                            ClamAV
+                            <span class="status-badge ok" id="clamav-status">
+                                <span class="status-dot"></span>
+                                Loading...
+                            </span>
+                        </h3>
+                        <div class="details">
+                            <p>Enabled: <span id="clamav-enabled">--</span></p>
+                            <p>Connected: <span id="clamav-connected">--</span></p>
+                        </div>
+                    </div>
+                    <div class="service-card" id="sync-service">
+                        <h3>
+                            Sync
+                            <span class="status-badge ok" id="sync-status">
+                                <span class="status-dot"></span>
+                                Loading...
+                            </span>
+                        </h3>
+                        <div class="details">
+                            <p>Last Sync: <span id="sync-time">--</span></p>
+                            <p>Items Synced: <span id="sync-items">--</span></p>
+                        </div>
+                    </div>
+                    <div class="service-card" id="network-service">
+                        <h3>
+                            Network I/O
+                        </h3>
+                        <div class="details">
+                            <p>Sent: <span id="net-sent">--</span> MB</p>
+                            <p>Received: <span id="net-recv">--</span> MB</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2>Live Metrics</h2>
+                <span class="last-updated">Last updated: <span id="last-updated">--</span></span>
+            </div>
+            <div class="section-content">
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>CPU Usage</h3>
+                        <div class="chart-container-small">
+                            <canvas id="cpuChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Memory Usage</h3>
+                        <div class="chart-container-small">
+                            <canvas id="memoryChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Disk Usage</h3>
+                        <div class="chart-container-small">
+                            <canvas id="diskChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const maxDataPoints = 60; // 5 minutes at 5 second intervals
+        const labels = [];
+
+        function createChartConfig(label, borderColor, bgColor) {
+            return {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: [],
+                        borderColor: borderColor,
+                        backgroundColor: bgColor,
+                        tension: 0.3,
+                        fill: true,
+                        pointRadius: 0,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 300 },
+                    scales: {
+                        x: {
+                            display: true,
+                            grid: { color: '#333' },
+                            ticks: { color: '#888', maxTicksLimit: 6, maxRotation: 0 }
+                        },
+                        y: {
+                            display: true,
+                            min: 0,
+                            max: 100,
+                            grid: { color: '#333' },
+                            ticks: {
+                                color: '#888',
+                                callback: (v) => v + '%'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            };
+        }
+
+        const cpuChart = new Chart(
+            document.getElementById('cpuChart').getContext('2d'),
+            createChartConfig('CPU %', '#f87171', 'rgba(248, 113, 113, 0.2)')
+        );
+        const memoryChart = new Chart(
+            document.getElementById('memoryChart').getContext('2d'),
+            createChartConfig('Memory %', '#60a5fa', 'rgba(96, 165, 250, 0.2)')
+        );
+        const diskChart = new Chart(
+            document.getElementById('diskChart').getContext('2d'),
+            createChartConfig('Disk %', '#4ade80', 'rgba(74, 222, 128, 0.2)')
+        );
+
+        function updateUI(data) {
+            // Status
+            const statusCard = document.getElementById('status-card');
+            const statusValue = document.getElementById('status-value');
+            const isHealthy = data.status === 'healthy';
+            statusCard.className = 'stat-card' + (isHealthy ? '' : ' error');
+            statusValue.innerHTML = `
+                <span class="status-badge ${isHealthy ? 'ok' : 'error'}">
+                    <span class="status-dot"></span>
+                    ${data.status.charAt(0).toUpperCase() + data.status.slice(1)}
+                </span>
+            `;
+
+            // CPU
+            const cpuCard = document.getElementById('cpu-card');
+            const cpuValue = document.getElementById('cpu-value');
+            const cpuPercent = data.cpu?.percent || 0;
+            cpuValue.textContent = cpuPercent.toFixed(1) + '%';
+            cpuCard.className = 'stat-card' + (cpuPercent > 80 ? ' error' : cpuPercent > 60 ? ' warning' : '');
+
+            // Memory
+            const memoryCard = document.getElementById('memory-card');
+            const memoryValue = document.getElementById('memory-value');
+            const memoryPercent = data.memory?.percent_used || 0;
+            memoryValue.textContent = memoryPercent.toFixed(1) + '%';
+            memoryCard.className = 'stat-card' + (memoryPercent > 90 ? ' error' : memoryPercent > 75 ? ' warning' : '');
+
+            // Disk
+            const diskCard = document.getElementById('disk-card');
+            const diskValue = document.getElementById('disk-value');
+            const diskPercent = data.disk?.percent_used || 0;
+            diskValue.textContent = diskPercent.toFixed(1) + '%';
+            diskCard.className = 'stat-card' + (diskPercent > 90 ? ' error' : diskPercent > 75 ? ' warning' : '');
+
+            // Database service
+            const dbConnected = data.database?.connected;
+            const dbStatus = document.getElementById('db-status');
+            dbStatus.className = 'status-badge ' + (dbConnected ? 'ok' : 'error');
+            dbStatus.innerHTML = `<span class="status-dot"></span>${dbConnected ? 'Connected' : 'Disconnected'}`;
+            document.getElementById('db-items').textContent = data.database?.items ?? '--';
+            document.getElementById('db-images').textContent = data.database?.images ?? '--';
+
+            // ClamAV service
+            const clamavEnabled = data.clamav?.enabled;
+            const clamavConnected = data.clamav?.connected;
+            const clamavStatus = document.getElementById('clamav-status');
+            if (!clamavEnabled) {
+                clamavStatus.className = 'status-badge warning';
+                clamavStatus.innerHTML = '<span class="status-dot"></span>Disabled';
+            } else {
+                clamavStatus.className = 'status-badge ' + (clamavConnected ? 'ok' : 'error');
+                clamavStatus.innerHTML = `<span class="status-dot"></span>${clamavConnected ? 'Connected' : 'Disconnected'}`;
+            }
+            document.getElementById('clamav-enabled').textContent = clamavEnabled ? 'Yes' : 'No';
+            document.getElementById('clamav-connected').textContent = clamavConnected ? 'Yes' : 'No';
+
+            // Sync service
+            const syncStatus = document.getElementById('sync-status');
+            const lastSyncStatus = data.sync?.last_sync_status;
+            const lastSyncTime = data.sync?.last_sync_time;
+            if (lastSyncStatus === 'success') {
+                syncStatus.className = 'status-badge ok';
+                syncStatus.innerHTML = '<span class="status-dot"></span>Success';
+            } else if (lastSyncStatus === 'error') {
+                syncStatus.className = 'status-badge error';
+                syncStatus.innerHTML = '<span class="status-dot"></span>Error';
+            } else {
+                syncStatus.className = 'status-badge warning';
+                syncStatus.innerHTML = '<span class="status-dot"></span>No Sync';
+            }
+            document.getElementById('sync-time').textContent = lastSyncTime ? new Date(lastSyncTime).toLocaleString() : 'Never';
+            document.getElementById('sync-items').textContent = data.sync?.last_sync_items ?? '--';
+
+            // Network I/O
+            document.getElementById('net-sent').textContent = data.network?.bytes_sent_mb?.toFixed(2) ?? '--';
+            document.getElementById('net-recv').textContent = data.network?.bytes_recv_mb?.toFixed(2) ?? '--';
+
+            // Last updated
+            document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+
+            // Update charts
+            const now = new Date();
+            const timeLabel = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            labels.push(timeLabel);
+            cpuChart.data.datasets[0].data.push(cpuPercent);
+            memoryChart.data.datasets[0].data.push(memoryPercent);
+            diskChart.data.datasets[0].data.push(diskPercent);
+
+            // Keep only last maxDataPoints
+            if (labels.length > maxDataPoints) {
+                labels.shift();
+                cpuChart.data.datasets[0].data.shift();
+                memoryChart.data.datasets[0].data.shift();
+                diskChart.data.datasets[0].data.shift();
+            }
+
+            cpuChart.update('none');
+            memoryChart.update('none');
+            diskChart.update('none');
+        }
+
+        async function fetchHealth() {
+            try {
+                const response = await fetch('/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    updateUI(data);
+                }
+            } catch (error) {
+                console.error('Failed to fetch health data:', error);
+            }
+        }
+
+        // Initial fetch
+        fetchHealth();
+
+        // Poll every 5 seconds
+        setInterval(fetchHealth, 5000);
+    </script>
+</body>
+</html>

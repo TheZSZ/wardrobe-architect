@@ -1,24 +1,54 @@
+# Git
 .git
 .gitignore
+
+# Environment and secrets
 .env
-.env.local
+.env.*
+
+# Python bytecode and cache
 *.pyc
-__pycache__
 *.pyo
 *.pyd
+__pycache__/
 .Python
+
+# Python virtual environments
 venv/
 .venv/
+
+# Python build artifacts
 *.egg-info/
+.eggs/
 dist/
 build/
+
+# Testing (generated at runtime)
 .pytest_cache/
 .mypy_cache/
 htmlcov/
 .coverage
-*.log
+.coverage.*
+
+# Runtime data (mounted as volumes)
+images/
 logs/
 backups/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Documentation (not needed in container)
 README.md
+CLAUDE.md
 .claude/
+
+# Makefile archive excludes
+*.tar.gz

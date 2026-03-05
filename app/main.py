@@ -1,13 +1,16 @@
+import json
 import logging
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.routers import items, images, web, admin
+from app.routers import items, images, web, admin, auth
 from app.config import Settings, get_settings
 from app.logging_config import setup_logging
 from app.services.database import get_database_service
@@ -15,9 +18,48 @@ from app.services.database import get_database_service
 # Initialize logging
 setup_logging()
 logger = logging.getLogger(__name__)
+request_logger = logging.getLogger("app.requests")
 
 # Rate limiter setup
 limiter = Limiter(key_func=get_remote_address)
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Middleware to log requests in a clean JSON format."""
+
+    # Paths to skip logging (noisy or health checks)
+    SKIP_PATHS = {"/health", "/favicon.ico"}
+
+    async def dispatch(self, request: Request, call_next):
+        # Skip logging for certain paths
+        if request.url.path in self.SKIP_PATHS:
+            return await call_next(request)
+
+        start_time = time.time()
+        response = await call_next(request)
+        duration_ms = round((time.time() - start_time) * 1000, 2)
+
+        # Build log entry
+        log_entry = {
+            "method": request.method,
+            "path": request.url.path,
+            "status": response.status_code,
+            "duration_ms": duration_ms,
+        }
+
+        # Add query params if present (but hide sensitive ones)
+        if request.query_params:
+            params = dict(request.query_params)
+            # Redact sensitive params
+            for key in ["api_key", "token", "password"]:
+                if key in params:
+                    params[key] = "***"
+            log_entry["query"] = params
+
+        # Log as JSON string
+        request_logger.info(json.dumps(log_entry))
+
+        return response
 
 
 @asynccontextmanager
@@ -26,10 +68,23 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
 
     # Log startup mode
+    if settings.dev_mode:
+        logger.info("Starting in DEV MODE (short sessions, OAuth links cleared)")
     if settings.dummy_mode:
         logger.info("Starting in DUMMY MODE (no Google Sheets connection)")
     else:
         logger.info("Starting in NORMAL MODE (Google Sheets enabled)")
+
+    # In dev mode, clear OAuth links for fresh testing
+    if settings.dev_mode:
+        try:
+            from app.services.user_service import get_user_service
+            user_service = get_user_service(settings)
+            count = user_service.clear_all_oauth_links()
+            if count > 0:
+                logger.info(f"Dev mode: cleared {count} OAuth links for fresh testing")
+        except Exception as e:
+            logger.warning(f"Could not clear OAuth links: {e}")
 
     # Check database connection
     try:
@@ -82,6 +137,9 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Request logging middleware - logs all requests in JSON format
+app.add_middleware(RequestLoggingMiddleware)
+
 # CORS middleware - configured via CORS_ORIGINS environment variable
 # For personal use, leave CORS_ORIGINS empty (same-origin only)
 # For ChatGPT Actions, set CORS_ORIGINS=https://chat.openai.com
@@ -97,6 +155,7 @@ if cors_origins:
     )
 
 # Include routers
+app.include_router(auth.router)
 app.include_router(web.router)
 app.include_router(items.router)
 app.include_router(images.router)
@@ -124,28 +183,74 @@ async def redoc_redirect():
 async def health_check(settings: Settings = Depends(get_settings)):
     """Health check endpoint with system stats - no authentication required."""
     import psutil
+    from datetime import datetime
     from pathlib import Path
+
+    from app.services.clamav_service import get_clamav_service
+    from app.services.storage import get_storage_service
 
     # Basic status
     health = {
         "status": "healthy",
         "mode": "dummy" if settings.dummy_mode else "normal",
+        "timestamp": datetime.now().isoformat(),
     }
 
     # Database status
+    db = None
+    storage = get_storage_service(settings)
     try:
         db = get_database_service(settings)
         db_connected = db.is_connected()
         health["database"] = {
             "connected": db_connected,
             "items": db.get_item_count() if db_connected else 0,
-            "images": db.get_image_count() if db_connected else 0,
+            "images": storage.count_images_on_disk(),
         }
         if not db_connected:
             health["status"] = "degraded"
     except Exception as e:
         health["database"] = {"connected": False, "error": str(e)}
         health["status"] = "degraded"
+
+    # ClamAV status
+    try:
+        clamav = get_clamav_service(settings)
+        health["clamav"] = {
+            "enabled": clamav.enabled,
+            "connected": clamav.is_available(),
+        }
+    except Exception as e:
+        health["clamav"] = {"enabled": False, "connected": False, "error": str(e)}
+
+    # Sync status (from database)
+    try:
+        if db:
+            last_sync = db.get_last_sync()
+            if last_sync:
+                health["sync"] = {
+                    "last_sync_time": last_sync.get("synced_at"),
+                    "last_sync_status": last_sync.get("status"),
+                    "last_sync_items": last_sync.get("items_synced"),
+                }
+            else:
+                health["sync"] = {
+                    "last_sync_time": None,
+                    "last_sync_status": None,
+                    "last_sync_items": None,
+                }
+    except Exception as e:
+        health["sync"] = {"error": str(e)}
+
+    # Network I/O
+    try:
+        net_io = psutil.net_io_counters()
+        health["network"] = {
+            "bytes_sent_mb": round(net_io.bytes_sent / (1024 * 1024), 2),
+            "bytes_recv_mb": round(net_io.bytes_recv / (1024 * 1024), 2),
+        }
+    except Exception as e:
+        health["network"] = {"error": str(e)}
 
     # Disk usage
     try:

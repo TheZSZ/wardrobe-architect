@@ -4,12 +4,14 @@ import re
 import uuid
 from pathlib import Path
 from typing import Optional
+from uuid import UUID
 
 from fastapi import UploadFile
 
 from app.config import Settings
 from app.models.item import ImageInfo, CropRegion
 from app.services.database import DatabaseService, get_database_service
+from app.services.clamav_service import ClamAVService, get_clamav_service
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,7 @@ class StorageService:
         self.images_dir = Path(settings.images_dir)
         self.images_dir.mkdir(parents=True, exist_ok=True)
         self._db: Optional[DatabaseService] = None
+        self._clamav: Optional[ClamAVService] = None
 
     @property
     def db(self) -> DatabaseService:
@@ -32,6 +35,13 @@ class StorageService:
         if self._db is None:
             self._db = get_database_service(self.settings)
         return self._db
+
+    @property
+    def clamav(self) -> ClamAVService:
+        """Lazy load ClamAV service."""
+        if self._clamav is None:
+            self._clamav = get_clamav_service(self.settings)
+        return self._clamav
 
     def _sanitize_item_id(self, item_id: str) -> str:
         """Sanitize item_id to prevent path traversal attacks."""
@@ -43,13 +53,32 @@ class StorageService:
             raise ValueError(f"Invalid characters in item_id: {item_id}")
         return item_id.strip()
 
-    def _get_item_dir(self, item_id: str) -> Path:
+    def _get_item_dir(self, item_id: str, user_id: Optional[UUID] = None) -> Path:
         safe_id = self._sanitize_item_id(item_id)
-        item_dir = self.images_dir / safe_id
+        if user_id:
+            # User-scoped path: /images/{user_id}/{item_id}/
+            item_dir = self.images_dir / str(user_id) / safe_id
+        else:
+            # Legacy path (for migration): /images/{item_id}/
+            item_dir = self.images_dir / safe_id
         if not item_dir.resolve().is_relative_to(self.images_dir.resolve()):
             raise ValueError(f"Invalid item_id: {item_id}")
         item_dir.mkdir(parents=True, exist_ok=True)
         return item_dir
+
+    def _get_user_dir(self, user_id: UUID) -> Path:
+        """Get or create user's image directory."""
+        user_dir = self.images_dir / str(user_id)
+        user_dir.mkdir(parents=True, exist_ok=True)
+        return user_dir
+
+    def count_images_on_disk(self) -> int:
+        """Count all image files on disk (excluding hidden files)."""
+        count = 0
+        for path in self.images_dir.rglob('*'):
+            if path.is_file() and not path.name.startswith('.'):
+                count += 1
+        return count
 
     # Legacy file-based methods for backward compatibility during migration
     def _get_order_file(self, item_id: str) -> Path:
@@ -154,9 +183,9 @@ class StorageService:
         return None
 
     async def save_image(
-        self, item_id: str, file: UploadFile, base_url: str
+        self, item_id: str, file: UploadFile, base_url: str, user_id: Optional[UUID] = None
     ) -> ImageInfo:
-        item_dir = self._get_item_dir(item_id)
+        item_dir = self._get_item_dir(item_id, user_id=user_id)
 
         # Generate unique image ID
         image_id = str(uuid.uuid4())[:8]
@@ -168,8 +197,18 @@ class StorageService:
 
         file_path = item_dir / filename
 
-        # Save file
+        # Read file content
         content = await file.read()
+
+        # Scan for viruses before saving
+        is_clean, virus_name = self.clamav.scan_bytes(content)
+        if not is_clean:
+            logger.error(
+                f"Virus detected in upload for item '{item_id}': {virus_name}"
+            )
+            raise ValueError(f"File rejected: virus detected ({virus_name})")
+
+        # Save file
         with open(file_path, "wb") as f:
             f.write(content)
 
@@ -185,6 +224,7 @@ class StorageService:
                     item_id=item_id,
                     filename=original_filename,
                     display_order=display_order,
+                    user_id=user_id,
                 )
                 file_size_kb = len(content) / 1024
                 logger.info(
@@ -209,19 +249,39 @@ class StorageService:
         )
 
     def get_image_path(self, image_id: str) -> Optional[tuple[Path, str]]:
-        """Search all item directories for the image."""
-        for item_dir in self.images_dir.iterdir():
-            if not item_dir.is_dir():
-                continue
+        """Search all item directories for the image (including user-scoped paths)."""
+        def search_in_dir(base_dir: Path) -> Optional[tuple[Path, str]]:
+            for item_dir in base_dir.iterdir():
+                if not item_dir.is_dir():
+                    continue
 
-            for file in item_dir.iterdir():
-                if file.stem == image_id:
-                    return file, item_dir.name
+                # Check if this is a user directory (UUID format) - search deeper
+                try:
+                    UUID(item_dir.name)
+                    # This is a user directory, search its subdirectories
+                    result = search_in_dir(item_dir)
+                    if result:
+                        return result
+                    continue
+                except ValueError:
+                    pass
 
-        return None
+                # This is an item directory, search for the image
+                for file in item_dir.iterdir():
+                    if file.stem == image_id:
+                        return file, item_dir.name
 
-    def list_images_for_item(self, item_id: str, base_url: str) -> list[ImageInfo]:
-        item_dir = self.images_dir / item_id
+            return None
+
+        return search_in_dir(self.images_dir)
+
+    def list_images_for_item(
+        self, item_id: str, base_url: str, user_id: Optional[UUID] = None
+    ) -> list[ImageInfo]:
+        if user_id:
+            item_dir = self.images_dir / str(user_id) / item_id
+        else:
+            item_dir = self.images_dir / item_id
         if not item_dir.exists():
             return []
 
@@ -356,8 +416,13 @@ class StorageService:
         self._save_order(item_id, image_ids)
         return True
 
-    def delete_all_images_for_item(self, item_id: str) -> int:
-        item_dir = self.images_dir / item_id
+    def delete_all_images_for_item(
+        self, item_id: str, user_id: Optional[UUID] = None
+    ) -> int:
+        if user_id:
+            item_dir = self.images_dir / str(user_id) / item_id
+        else:
+            item_dir = self.images_dir / item_id
         if not item_dir.exists():
             return 0
 

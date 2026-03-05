@@ -6,6 +6,8 @@ from contextlib import contextmanager
 import psycopg2
 from psycopg2.extras import RealDictCursor, Json
 
+from uuid import UUID
+
 from app.config import Settings
 from app.models.item import WardrobeItem, WardrobeItemCreate, WardrobeItemUpdate
 
@@ -42,10 +44,15 @@ class DatabaseService:
         category: Optional[str] = None,
         color: Optional[str] = None,
         season: Optional[str] = None,
+        user_id: Optional[UUID] = None,
     ) -> list[WardrobeItem]:
         """Get all items with optional filters."""
         query = "SELECT id, data FROM wardrobe_items WHERE 1=1"
         params = []
+
+        if user_id:
+            query += " AND user_id = %s"
+            params.append(str(user_id))
 
         if category:
             query += " AND LOWER(data->>'category') = LOWER(%s)"
@@ -77,13 +84,19 @@ class DatabaseService:
             ))
         return items
 
-    def get_item_by_id(self, item_id: str) -> Optional[WardrobeItem]:
-        """Get a single item by ID."""
+    def get_item_by_id(
+        self, item_id: str, user_id: Optional[UUID] = None
+    ) -> Optional[WardrobeItem]:
+        """Get a single item by ID, optionally scoped to user."""
+        query = "SELECT id, data FROM wardrobe_items WHERE id = %s"
+        params = [item_id]
+
+        if user_id:
+            query += " AND user_id = %s"
+            params.append(str(user_id))
+
         with self.get_cursor() as cursor:
-            cursor.execute(
-                "SELECT id, data FROM wardrobe_items WHERE id = %s",
-                (item_id,)
-            )
+            cursor.execute(query, params)
             row = cursor.fetchone()
 
         if not row:
@@ -100,27 +113,29 @@ class DatabaseService:
             notes=data.get('notes'),
         )
 
-    def create_item(self, item_id: str, item_data: WardrobeItemCreate) -> WardrobeItem:
+    def create_item(
+        self, item_id: str, item_data: WardrobeItemCreate, user_id: Optional[UUID] = None
+    ) -> WardrobeItem:
         """Create a new item."""
         data = item_data.model_dump()
 
         with self.get_cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO wardrobe_items (id, data, synced_at)
-                VALUES (%s, %s, %s)
+                INSERT INTO wardrobe_items (id, data, synced_at, user_id)
+                VALUES (%s, %s, %s, %s)
                 """,
-                (item_id, Json(data), datetime.now())
+                (item_id, Json(data), datetime.now(), str(user_id) if user_id else None)
             )
 
         return WardrobeItem(id=item_id, **data)
 
     def update_item(
-        self, item_id: str, item_data: WardrobeItemUpdate
+        self, item_id: str, item_data: WardrobeItemUpdate, user_id: Optional[UUID] = None
     ) -> Optional[WardrobeItem]:
         """Update an existing item."""
         # Get current data
-        current = self.get_item_by_id(item_id)
+        current = self.get_item_by_id(item_id, user_id=user_id)
         if not current:
             return None
 
@@ -136,25 +151,39 @@ class DatabaseService:
         update_data = item_data.model_dump(exclude_unset=True)
         current_data.update(update_data)
 
-        with self.get_cursor() as cursor:
-            cursor.execute(
-                """
+        query = """
+            UPDATE wardrobe_items
+            SET data = %s, updated_at = %s
+            WHERE id = %s
+        """
+        params = [Json(current_data), datetime.now(), item_id]
+
+        if user_id:
+            query = """
                 UPDATE wardrobe_items
                 SET data = %s, updated_at = %s
-                WHERE id = %s
-                """,
-                (Json(current_data), datetime.now(), item_id)
-            )
+                WHERE id = %s AND user_id = %s
+            """
+            params.append(str(user_id))
 
-        return self.get_item_by_id(item_id)
-
-    def delete_item(self, item_id: str) -> bool:
-        """Delete an item."""
         with self.get_cursor() as cursor:
-            cursor.execute(
-                "DELETE FROM wardrobe_items WHERE id = %s RETURNING id",
-                (item_id,)
-            )
+            cursor.execute(query, params)
+
+        return self.get_item_by_id(item_id, user_id=user_id)
+
+    def delete_item(self, item_id: str, user_id: Optional[UUID] = None) -> bool:
+        """Delete an item."""
+        query = "DELETE FROM wardrobe_items WHERE id = %s"
+        params = [item_id]
+
+        if user_id:
+            query += " AND user_id = %s"
+            params.append(str(user_id))
+
+        query += " RETURNING id"
+
+        with self.get_cursor() as cursor:
+            cursor.execute(query, params)
             result = cursor.fetchone()
 
         return result is not None
@@ -257,17 +286,31 @@ class DatabaseService:
             }
         return None
 
-    def get_item_count(self) -> int:
+    def get_item_count(self, user_id: Optional[UUID] = None) -> int:
         """Get total number of items."""
+        query = "SELECT COUNT(*) as count FROM wardrobe_items"
+        params = []
+
+        if user_id:
+            query += " WHERE user_id = %s"
+            params.append(str(user_id))
+
         with self.get_cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) as count FROM wardrobe_items")
+            cursor.execute(query, params)
             row = cursor.fetchone()
         return row['count'] if row else 0
 
-    def get_image_count(self) -> int:
+    def get_image_count(self, user_id: Optional[UUID] = None) -> int:
         """Get total number of images."""
+        query = "SELECT COUNT(*) as count FROM image_metadata"
+        params = []
+
+        if user_id:
+            query += " WHERE user_id = %s"
+            params.append(str(user_id))
+
         with self.get_cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) as count FROM image_metadata")
+            cursor.execute(query, params)
             row = cursor.fetchone()
         return row['count'] if row else 0
 
@@ -303,13 +346,15 @@ class DatabaseService:
         filename: str,
         display_order: int = 0,
         crop_region: Optional[dict] = None,
+        user_id: Optional[UUID] = None,
     ) -> None:
         """Save or update image metadata."""
         with self.get_cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO image_metadata (image_id, item_id, filename, display_order, crop_region)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO image_metadata
+                    (image_id, item_id, filename, display_order, crop_region, user_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (image_id) DO UPDATE
                 SET filename = EXCLUDED.filename,
                     display_order = EXCLUDED.display_order,
@@ -317,7 +362,8 @@ class DatabaseService:
                 """,
                 (
                     image_id, item_id, filename, display_order,
-                    Json(crop_region) if crop_region else None
+                    Json(crop_region) if crop_region else None,
+                    str(user_id) if user_id else None
                 )
             )
 

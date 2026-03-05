@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loading... - Wardrobe Architect</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e5e5e5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .loader {
+            text-align: center;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #333;
+            border-top-color: #2563eb;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .error {
+            color: #f87171;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="loader">
+        <div class="spinner"></div>
+        <p>Setting up your session...</p>
+        <p class="error" id="error" style="display: none;"></p>
+    </div>
+
+    <script>
+        async function setup() {
+            try {
+                // Check if user already has an API key in localStorage
+                let apiKey = localStorage.getItem('apiKey');
+
+                if (!apiKey) {
+                    // Fetch or create an API key for this user
+                    const response = await fetch('/api/keys/ensure', {
+                        method: 'POST',
+                        credentials: 'same-origin'
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Failed to get API key');
+                    }
+
+                    const data = await response.json();
+                    apiKey = data.key;
+                    localStorage.setItem('apiKey', apiKey);
+                }
+
+                // Redirect to wardrobe
+                window.location.href = '/wardrobe';
+            } catch (err) {
+                console.error('Setup failed:', err);
+                document.getElementById('error').textContent = 'Setup failed: ' + err.message;
+                document.getElementById('error').style.display = 'block';
+
+                // Fallback: redirect to settings where they can manually get an API key
+                setTimeout(() => {
+                    window.location.href = '/settings';
+                }, 2000);
+            }
+        }
+
+        setup();
+    </script>
+</body>
+</html>

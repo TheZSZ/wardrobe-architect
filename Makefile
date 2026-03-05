@@ -1,4 +1,4 @@
-.PHONY: build test lint clean run run-dummy stop archive sync backup restore check-db
+.PHONY: build test lint clean run run-dummy stop logs archive sync backup restore check-db
 
 # Dummy values for commands that don't need real credentials
 DUMMY_ENV = API_KEY=dummy GOOGLE_SHEET_ID=dummy GOOGLE_SHEETS_CREDENTIALS_JSON='{}'
@@ -33,12 +33,19 @@ run:
 		echo "Usage: API_KEY=xxx GOOGLE_SHEET_ID=xxx GOOGLE_SHEETS_CREDENTIALS_JSON='{...}' make run"; \
 		exit 1; \
 	fi
-	docker compose up -d wardrobe-api
+	docker compose up -d nginx
 
 # Run the API server in dummy mode (in-memory storage, no Google Sheets)
+# Starts detached, then follows logs. Ctrl+C stops log viewing (containers keep running).
+# Use 'make stop' to stop all containers.
 run-dummy:
-	@API_KEY=dummy DUMMY_MODE=true docker compose up -d wardrobe-api
-	@echo "Running in dummy mode at http://localhost:8000"
+	API_KEY=dummy DUMMY_MODE=true docker compose up -d nginx
+	@echo "Services started. Following logs (Ctrl+C to detach, 'make stop' to stop)..."
+	@docker compose logs --tail=50 -f
+
+# Follow logs from all running containers (for attaching to a screen session)
+logs:
+	@docker compose logs --tail=50 -f
 
 # Stop all containers (including test/lint profiles)
 stop:

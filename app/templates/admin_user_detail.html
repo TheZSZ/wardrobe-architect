@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👔</text></svg>">
+    <title>{{ user.email }} - Admin</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e5e5e5;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid #333;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        header p {
+            color: #888;
+            font-size: 0.875rem;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .section {
+            background: #1a1a1a;
+            border-radius: 8px;
+            border: 1px solid #333;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+
+        .section-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #333;
+            font-weight: 600;
+        }
+
+        .section-content {
+            padding: 1.5rem;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+        }
+
+        .info-item label {
+            display: block;
+            color: #888;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+
+        .info-item span {
+            font-weight: 500;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .status-active {
+            background: rgba(74, 222, 128, 0.1);
+            color: #4ade80;
+        }
+
+        .status-inactive {
+            background: rgba(248, 113, 113, 0.1);
+            color: #f87171;
+        }
+
+        .success {
+            background: rgba(74, 222, 128, 0.1);
+            color: #4ade80;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            margin-bottom: 1.5rem;
+            font-size: 0.875rem;
+            border: 1px solid rgba(74, 222, 128, 0.2);
+        }
+
+        .error {
+            background: rgba(248, 113, 113, 0.1);
+            color: #f87171;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            margin-bottom: 1.5rem;
+            font-size: 0.875rem;
+            border: 1px solid rgba(248, 113, 113, 0.2);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #2563eb;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1d4ed8;
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: #e5e5e5;
+        }
+
+        .btn-secondary:hover {
+            background: #404040;
+        }
+
+        .btn-danger {
+            background: rgba(248, 113, 113, 0.1);
+            color: #f87171;
+            border: 1px solid rgba(248, 113, 113, 0.2);
+        }
+
+        .btn-danger:hover {
+            background: rgba(248, 113, 113, 0.2);
+        }
+
+        .btn-success {
+            background: rgba(74, 222, 128, 0.1);
+            color: #4ade80;
+            border: 1px solid rgba(74, 222, 128, 0.2);
+        }
+
+        .btn-success:hover {
+            background: rgba(74, 222, 128, 0.2);
+        }
+
+        .actions-row {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #333;
+        }
+
+        .api-key-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .api-key-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem;
+            background: #0f0f0f;
+            border-radius: 6px;
+            border: 1px solid #262626;
+        }
+
+        .api-key-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .api-key-name {
+            font-weight: 500;
+        }
+
+        .api-key-prefix {
+            font-family: monospace;
+            color: #888;
+            font-size: 0.875rem;
+        }
+
+        .api-key-meta {
+            font-size: 0.75rem;
+            color: #666;
+        }
+
+        .form-inline {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .form-inline input {
+            flex: 1;
+            padding: 0.5rem 1rem;
+            background: #0f0f0f;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #e5e5e5;
+            font-size: 0.875rem;
+        }
+
+        .form-inline input:focus {
+            outline: none;
+            border-color: #2563eb;
+        }
+
+        .form-inline input::placeholder {
+            color: #666;
+        }
+
+        .oauth-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .oauth-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 1rem;
+            background: #0f0f0f;
+            border-radius: 6px;
+            border: 1px solid #262626;
+        }
+
+        .oauth-provider {
+            font-weight: 500;
+            text-transform: capitalize;
+        }
+
+        .oauth-email {
+            color: #888;
+            font-size: 0.875rem;
+        }
+
+        .no-items {
+            color: #666;
+            font-style: italic;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .new-key-form {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #333;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .form-inline {
+                flex-direction: column;
+            }
+
+            .form-inline input {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h1>{{ user.email }}</h1>
+                <p>User account details and management</p>
+            </div>
+            <div class="header-actions">
+                <a href="/admin/users" class="btn btn-secondary">Back to Users</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        {% if success %}
+        <div class="success">{{ success | replace('+', ' ') }}</div>
+        {% endif %}
+
+        {% if error %}
+        <div class="error">{{ error | replace('+', ' ') }}</div>
+        {% endif %}
+
+        <div class="section">
+            <div class="section-header">User Information</div>
+            <div class="section-content">
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>Email</label>
+                        <span>{{ user.email }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Display Name</label>
+                        <span>{{ user.display_name or 'Not set' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Status</label>
+                        {% if user.is_active %}
+                        <span class="status-badge status-active">Active</span>
+                        {% else %}
+                        <span class="status-badge status-inactive">Disabled</span>
+                        {% endif %}
+                    </div>
+                    <div class="info-item">
+                        <label>User ID</label>
+                        <span style="font-family: monospace; font-size: 0.875rem;">{{ user.id }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Created</label>
+                        <span>{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Last Login</label>
+                        <span>{{ user.last_login.strftime('%Y-%m-%d %H:%M') if user.last_login else 'Never' }}</span>
+                    </div>
+                </div>
+                <div class="actions-row">
+                    <form method="POST" action="/admin/users/{{ user.id }}/toggle-active" style="margin: 0;">
+                        {% if user.is_active %}
+                        <button type="submit" class="btn btn-danger">Disable User</button>
+                        {% else %}
+                        <button type="submit" class="btn btn-success">Enable User</button>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">Reset Passcode</div>
+            <div class="section-content">
+                <form method="POST" action="/admin/users/{{ user.id }}/reset-passcode" class="form-inline">
+                    <input type="password" name="new_passcode" placeholder="New passcode (min 8 characters)" required minlength="8">
+                    <button type="submit" class="btn btn-secondary">Reset</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">API Keys</div>
+            <div class="section-content">
+                <div class="api-key-list">
+                    {% for key in api_keys %}
+                    <div class="api-key-item">
+                        <div class="api-key-info">
+                            <span class="api-key-name">{{ key.name or 'Unnamed Key' }}</span>
+                            <span class="api-key-prefix">{{ key.key_prefix }}...</span>
+                            <span class="api-key-meta">
+                                Created {{ key.created_at.strftime('%Y-%m-%d') }}
+                                {% if key.last_used %}
+                                | Last used {{ key.last_used.strftime('%Y-%m-%d') }}
+                                {% endif %}
+                                {% if not key.is_active %}
+                                | <span style="color: #f87171;">Revoked</span>
+                                {% endif %}
+                            </span>
+                        </div>
+                        {% if key.is_active %}
+                        <form method="POST" action="/admin/users/{{ user.id }}/api-key/{{ key.id }}/revoke" style="margin: 0;">
+                            <button type="submit" class="btn btn-danger">Revoke</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <div class="no-items">No API keys</div>
+                    {% endfor %}
+                </div>
+                <div class="new-key-form">
+                    <form method="POST" action="/admin/users/{{ user.id }}/api-key" class="form-inline">
+                        <input type="text" name="name" placeholder="Key name (optional)">
+                        <button type="submit" class="btn btn-primary">Generate New Key</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">OAuth Links</div>
+            <div class="section-content">
+                <div class="oauth-list">
+                    {% for link in oauth_links %}
+                    <div class="oauth-item">
+                        <span class="oauth-provider">{{ link.provider }}</span>
+                        <span class="oauth-email">{{ link.provider_email or link.provider_user_id }}</span>
+                        <span class="api-key-meta">Linked {{ link.linked_at.strftime('%Y-%m-%d') }}</span>
+                    </div>
+                    {% else %}
+                    <div class="no-items">No OAuth providers linked</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
