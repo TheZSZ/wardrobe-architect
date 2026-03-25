@@ -94,7 +94,14 @@ async def upload_image(
     await file.seek(0)
 
     base_url = get_base_url(request)
-    image_info = await storage.save_image(item_id, file, base_url)
+    try:
+        image_info = await storage.save_image(item_id, file, base_url)
+    except ValueError as e:
+        # Virus detected or other validation error
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     return image_info
 
 

@@ -53,15 +53,21 @@ class ClamAVService:
             return True, None
 
         try:
+            import time
+            start_time = time.perf_counter()
+            size_kb = len(data) / 1024
+
             result = self.client.instream(BytesIO(data))
             # Result format: {'stream': ('OK', None)} or {'stream': ('FOUND', 'virus_name')}
             status, virus_name = result.get('stream', ('OK', None))
 
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+
             if status == 'OK':
-                logger.debug("ClamAV scan: clean")
+                logger.info(f"ClamAV scan: clean ({size_kb:.1f}KB in {elapsed_ms:.0f}ms)")
                 return True, None
             elif status == 'FOUND':
-                logger.warning(f"ClamAV scan: virus detected - {virus_name}")
+                logger.warning(f"ClamAV scan: VIRUS DETECTED - {virus_name} ({size_kb:.1f}KB)")
                 return False, virus_name
             else:
                 logger.warning(f"ClamAV scan: unexpected status - {status}")

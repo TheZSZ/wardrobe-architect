@@ -10,14 +10,21 @@ networks:
     name: wardrobe-net
 
 services:
+  # Nginx reverse proxy (HTTP + HTTPS if certs exist)
+  # For HTTPS: set domain in nginx/server.conf and have certs at /etc/letsencrypt/live/{domain}/
   nginx:
     image: nginx:alpine
     platform: linux/amd64
     container_name: wardrobe-nginx
     ports:
       - "80:80"
+      - "443:443"
+    env_file:
+      - ./nginx/server.conf
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf.template:/etc/nginx/nginx-ssl.conf.template:ro
+      - ./nginx/nginx-http.conf:/etc/nginx/nginx-http.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
       - wardrobe-cache:/var/cache/nginx
       - ./logs/nginx:/var/log/nginx
     depends_on:
@@ -25,7 +32,16 @@ services:
     networks:
       - wardrobe-net
     restart: unless-stopped
-    command: ["/bin/sh", "-c", "mkdir -p /var/cache/nginx/images && nginx -g 'daemon off;'"]
+    command: >
+      /bin/sh -c "mkdir -p /var/cache/nginx/images &&
+        if [ -f /etc/letsencrypt/live/$${SERVER_NAME}/fullchain.pem ]; then
+          echo 'SSL certs found, enabling HTTPS';
+          envsubst '$${SERVER_NAME}' < /etc/nginx/nginx-ssl.conf.template > /etc/nginx/nginx.conf;
+        else
+          echo 'No SSL certs, running HTTP only';
+          cp /etc/nginx/nginx-http.conf /etc/nginx/nginx.conf;
+        fi &&
+        nginx -g 'daemon off;'"
 
   wardrobe-api:
     build:
@@ -44,6 +60,7 @@ services:
       - ./htmlcov:/app/htmlcov:ro
       - ./logs:/var/log
       - ./logs/nginx:/var/log/nginx:ro
+      - ./migrations:/app/migrations:ro  # For pending migration check
       - /var/run/docker.sock:/var/run/docker.sock:ro  # For docker logs access
     environment:
       - API_KEY=${API_KEY:-dummy}

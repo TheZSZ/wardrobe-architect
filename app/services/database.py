@@ -456,6 +456,56 @@ class DatabaseService:
             logger.warning(f"Failed to get sync history: {e}")
             return []
 
+    def get_pending_migrations(self, migrations_dir: str = "/app/migrations") -> list[str]:
+        """
+        Check for migrations that haven't been applied yet.
+        Returns list of pending migration filenames.
+        """
+        from pathlib import Path
+
+        pending = []
+        migrations_path = Path(migrations_dir)
+
+        if not migrations_path.exists():
+            return pending
+
+        # Get list of migration files
+        migration_files = sorted(migrations_path.glob("*.sql"))
+
+        if not migration_files:
+            return pending
+
+        try:
+            with self.get_cursor() as cursor:
+                # Check if schema_migrations table exists
+                cursor.execute(
+                    """
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_name = 'schema_migrations'
+                    )
+                    """
+                )
+                table_exists = cursor.fetchone()['exists']
+
+                if not table_exists:
+                    # Table doesn't exist, all migrations are pending
+                    return [f.name for f in migration_files]
+
+                # Get applied migrations
+                cursor.execute("SELECT filename FROM schema_migrations")
+                applied = {row['filename'] for row in cursor.fetchall()}
+
+                # Find pending migrations
+                for migration_file in migration_files:
+                    if migration_file.name not in applied:
+                        pending.append(migration_file.name)
+
+        except Exception as e:
+            logger.warning(f"Could not check pending migrations: {e}")
+
+        return pending
+
 
 # Singleton instance
 _db_service: Optional[DatabaseService] = None

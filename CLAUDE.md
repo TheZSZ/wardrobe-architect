@@ -10,15 +10,17 @@ A FastAPI backend for managing wardrobe items with image storage. Designed for i
 make build          # Build Docker images
 make test           # Run tests with coverage (238 tests, 71% coverage)
 make lint           # Run flake8 linter
-make run-dummy      # Run in dummy mode (starts full stack with nginx)
-make stop           # Stop all containers
-make clean          # Full cleanup (containers, volumes, images)
+make run-dummy      # Run in dummy mode (HTTP:80, HTTPS:443)
+make stop           # Stop all containers (data persists)
+make clean          # Full cleanup (containers, volumes, images) - DATA LOSS
+make logs           # Follow logs from all containers
+make migrate        # Run database schema migrations
 ```
 
 ## Architecture
 
 ### Services (Docker Compose)
-- **nginx**: Reverse proxy (port 80) - entry point, image caching
+- **nginx**: Reverse proxy (ports 80+443) - HTTP/HTTPS, image caching
 - **wardrobe-api**: FastAPI application (port 8000, localhost only)
 - **db**: PostgreSQL 16 (port 5433)
 - **clamav**: Virus scanning for uploads
@@ -140,6 +142,42 @@ Images are cached by nginx for 7 days:
 - Errors (401/403/404) are never cached
 - Check `X-Cache-Status` header: MISS (first request) → HIT (cached)
 
+## SSL/HTTPS Setup
+
+Nginx listens on both port 80 (HTTP) and 443 (HTTPS). To enable HTTPS:
+
+**1. Set your domain in `nginx/server.conf`:**
+```
+SERVER_NAME=wardrobe.example.com
+```
+
+**2. Get Let's Encrypt certificate:**
+```bash
+# Stop nginx first if running
+make stop
+
+# Get certificate
+sudo certbot certonly --standalone -d wardrobe.example.com
+```
+
+**3. Start nginx:**
+```bash
+make run-dummy   # HTTP works immediately, HTTPS after certs exist
+```
+
+**Files:**
+| File | Purpose |
+|------|---------|
+| `nginx/server.conf` | Domain name (SERVER_NAME=) |
+| `nginx/nginx.conf.template` | Nginx config template |
+| `/etc/letsencrypt/live/{domain}/` | Let's Encrypt certificates |
+
+**Certificate renewal:**
+```bash
+sudo certbot renew
+docker compose restart nginx
+```
+
 ## Common Tasks
 
 ### Add a new endpoint
@@ -160,8 +198,57 @@ docker compose exec wardrobe-db psql -U wardrobe -d wardrobe
 
 ### View live logs
 ```bash
-docker compose logs -f wardrobe-api
+make logs                           # All containers
+docker compose logs -f wardrobe-api # Just the API
 ```
+
+### Database Migrations
+
+Migrations are numbered SQL files in `migrations/` that are tracked in the `schema_migrations` table for auditing.
+
+**Run migrations:**
+```bash
+make migrate
+```
+
+**Output:**
+```
+=== Database Migration ===
+Applying base schema (init.sql)...
+✓ Base schema applied
+
+Checking migrations...
+  ⏭  001_add_wash_care.sql (already applied)
+  ▶  Applying 002_add_tags.sql...
+  ✓  002_add_tags.sql applied
+
+=== Migration Complete ===
+Applied: 1 | Skipped: 1
+```
+
+**Creating a new migration:**
+1. Create file: `migrations/NNN_description.sql` (e.g., `002_add_tags.sql`)
+2. Use `IF NOT EXISTS` for safety
+3. Run `make migrate`
+
+**Example migration file:**
+```sql
+-- Migration: 002_add_tags
+-- Description: Add tags array column
+
+ALTER TABLE wardrobe_items ADD COLUMN IF NOT EXISTS tags TEXT[];
+CREATE INDEX IF NOT EXISTS idx_items_tags ON wardrobe_items USING GIN (tags);
+```
+
+**View migration history:**
+```bash
+docker compose exec db psql -U wardrobe -d wardrobe -c "SELECT * FROM schema_migrations;"
+```
+
+**Data persistence:**
+- `make stop` - stops containers, data persists in Docker volumes
+- `make clean` - removes volumes, **DATA LOSS**
+- Database volume: `wardrobe-db` (persists across restarts)
 
 ## Notes
 

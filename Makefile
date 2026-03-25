@@ -1,4 +1,4 @@
-.PHONY: build test lint clean run run-dummy stop logs archive sync backup restore check-db
+.PHONY: build test lint clean run run-dummy stop logs archive sync backup restore check-db migrate
 
 # Dummy values for commands that don't need real credentials
 DUMMY_ENV = API_KEY=dummy GOOGLE_SHEET_ID=dummy GOOGLE_SHEETS_CREDENTIALS_JSON='{}'
@@ -38,9 +38,11 @@ run:
 # Run the API server in dummy mode (in-memory storage, no Google Sheets)
 # Starts detached, then follows logs. Ctrl+C stops log viewing (containers keep running).
 # Use 'make stop' to stop all containers.
+# For HTTPS: edit nginx/server.conf with your domain, then run certbot
 run-dummy:
 	API_KEY=dummy DUMMY_MODE=true docker compose up -d nginx
-	@echo "Services started. Following logs (Ctrl+C to detach, 'make stop' to stop)..."
+	@echo "Services started (HTTP:80, HTTPS:443). Following logs..."
+	@echo "Ctrl+C to detach, 'make stop' to stop all containers."
 	@docker compose logs --tail=50 -f
 
 # Follow logs from all running containers (for attaching to a screen session)
@@ -52,9 +54,27 @@ stop:
 	@$(DUMMY_ENV) docker compose --profile test --profile lint down
 
 # Full cleanup: stop containers, remove volumes and images
+# WARNING: This deletes ALL data including the database!
 clean:
+	@echo ""
+	@echo "╔═══════════════════════════════════════════════════════════════╗"
+	@echo "║  WARNING: This will PERMANENTLY DELETE all data including:    ║"
+	@echo "║    • PostgreSQL database (all wardrobe items)                 ║"
+	@echo "║    • All Docker volumes                                       ║"
+	@echo "║    • All wardrobe Docker images                               ║"
+	@echo "║                                                               ║"
+	@echo "║  This action CANNOT be undone. Run 'make backup' first!       ║"
+	@echo "╚═══════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@read -p "Type 'DELETE' to confirm: " confirm && [ "$$confirm" = "DELETE" ] || (echo "Aborted." && exit 1)
+	@read -p "Are you REALLY sure? Type 'YES' to proceed: " confirm2 && [ "$$confirm2" = "YES" ] || (echo "Aborted." && exit 1)
+	@echo ""
+	@echo "Removing containers and volumes..."
 	@$(DUMMY_ENV) docker compose --profile test --profile lint down -v
-	@docker images --filter "reference=wardrobe-architect-*" -q | xargs docker rmi 2>/dev/null || true
+	@echo "Removing images..."
+	@docker images --filter "reference=wardrobe-*" -q | xargs docker rmi 2>/dev/null || true
+	@echo ""
+	@echo "Clean complete. All data has been deleted."
 
 # Create a tar.gz archive of the project (compatible with Linux/Ubuntu)
 # --no-mac-metadata and --no-xattrs prevent macOS extended attributes
@@ -82,6 +102,10 @@ sync:
 # Check database connection
 check-db:
 	@$(DUMMY_ENV) docker compose exec wardrobe-api python -m app.cli check-db
+
+# Run database migrations (safe to run multiple times)
+migrate:
+	@./scripts/migrate.sh
 
 # Backup database and images
 backup:

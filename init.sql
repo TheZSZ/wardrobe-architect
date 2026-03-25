@@ -89,6 +89,14 @@ CREATE TABLE IF NOT EXISTS sync_log (
     error_message TEXT
 );
 
+-- Schema migrations tracking (for auditing)
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id SERIAL PRIMARY KEY,
+    filename VARCHAR(255) NOT NULL UNIQUE,
+    applied_at TIMESTAMP DEFAULT NOW(),
+    checksum VARCHAR(64)
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_items_category ON wardrobe_items ((data->>'category'));
 CREATE INDEX IF NOT EXISTS idx_items_color ON wardrobe_items ((data->>'color'));

@@ -95,6 +95,14 @@ async def lifespan(app: FastAPI):
             logger.info(
                 f"Database connected: {item_count} items, {image_count} images"
             )
+
+            # Check for pending migrations
+            pending = db.get_pending_migrations()
+            if pending:
+                logger.warning(
+                    f"PENDING MIGRATIONS: {len(pending)} migration(s) not applied: "
+                    f"{', '.join(pending)}. Run 'make migrate' to apply."
+                )
         else:
             logger.error("Database connection FAILED")
     except Exception as e:
