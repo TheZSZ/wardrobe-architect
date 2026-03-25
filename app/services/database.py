@@ -9,7 +9,7 @@ from psycopg2.extras import RealDictCursor, Json
 from uuid import UUID
 
 from app.config import Settings
-from app.models.item import WardrobeItem, WardrobeItemCreate, WardrobeItemUpdate
+from app.models.item import WardrobeItem, WardrobeItemCreate, WardrobeItemUpdate, WashCare
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class DatabaseService:
         user_id: Optional[UUID] = None,
     ) -> list[WardrobeItem]:
         """Get all items with optional filters."""
-        query = "SELECT id, data FROM wardrobe_items WHERE 1=1"
+        query = "SELECT id, data, wash_care FROM wardrobe_items WHERE 1=1"
         params = []
 
         if user_id:
@@ -73,6 +73,7 @@ class DatabaseService:
         items = []
         for row in rows:
             data = row['data']
+            wash_care_data = row.get('wash_care')
             items.append(WardrobeItem(
                 id=row['id'],
                 item=data.get('item', ''),
@@ -81,6 +82,7 @@ class DatabaseService:
                 fit=data.get('fit', ''),
                 season=data.get('season', ''),
                 notes=data.get('notes'),
+                wash_care=WashCare(**wash_care_data) if wash_care_data else None,
             ))
         return items
 
@@ -88,7 +90,7 @@ class DatabaseService:
         self, item_id: str, user_id: Optional[UUID] = None
     ) -> Optional[WardrobeItem]:
         """Get a single item by ID, optionally scoped to user."""
-        query = "SELECT id, data FROM wardrobe_items WHERE id = %s"
+        query = "SELECT id, data, wash_care FROM wardrobe_items WHERE id = %s"
         params = [item_id]
 
         if user_id:
@@ -103,6 +105,7 @@ class DatabaseService:
             return None
 
         data = row['data']
+        wash_care_data = row.get('wash_care')
         return WardrobeItem(
             id=row['id'],
             item=data.get('item', ''),
@@ -111,6 +114,7 @@ class DatabaseService:
             fit=data.get('fit', ''),
             season=data.get('season', ''),
             notes=data.get('notes'),
+            wash_care=WashCare(**wash_care_data) if wash_care_data else None,
         )
 
     def create_item(
@@ -118,16 +122,21 @@ class DatabaseService:
     ) -> WardrobeItem:
         """Create a new item."""
         data = item_data.model_dump()
+        # Extract wash_care for the separate column
+        wash_care_value = data.pop('wash_care', None)
 
         with self.get_cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO wardrobe_items (id, data, synced_at, user_id)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO wardrobe_items (id, data, wash_care, synced_at, user_id)
+                VALUES (%s, %s, %s, %s, %s)
                 """,
-                (item_id, Json(data), datetime.now(), str(user_id) if user_id else None)
+                (item_id, Json(data), Json(wash_care_value) if wash_care_value else None,
+                 datetime.now(), str(user_id) if user_id else None)
             )
 
+        # Reconstruct full data for return
+        data['wash_care'] = wash_care_value
         return WardrobeItem(id=item_id, **data)
 
     def update_item(
@@ -147,21 +156,29 @@ class DatabaseService:
             'fit': current.fit,
             'season': current.season,
             'notes': current.notes,
+            'wash_care': current.wash_care.model_dump() if current.wash_care else None,
         }
         update_data = item_data.model_dump(exclude_unset=True)
+        # Convert wash_care to dict if it's a model
+        if 'wash_care' in update_data and update_data['wash_care'] is not None:
+            if hasattr(update_data['wash_care'], 'model_dump'):
+                update_data['wash_care'] = update_data['wash_care'].model_dump()
         current_data.update(update_data)
+
+        # Extract wash_care for the separate column
+        wash_care_value = current_data.pop('wash_care', None)
 
         query = """
             UPDATE wardrobe_items
-            SET data = %s, updated_at = %s
+            SET data = %s, wash_care = %s, updated_at = %s
             WHERE id = %s
         """
-        params = [Json(current_data), datetime.now(), item_id]
+        params = [Json(current_data), Json(wash_care_value) if wash_care_value else None, datetime.now(), item_id]
 
         if user_id:
             query = """
                 UPDATE wardrobe_items
-                SET data = %s, updated_at = %s
+                SET data = %s, wash_care = %s, updated_at = %s
                 WHERE id = %s AND user_id = %s
             """
             params.append(str(user_id))

@@ -594,6 +594,96 @@
         .form-actions .btn {
             flex: 1;
         }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            font-weight: normal;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: 1.1rem;
+            height: 1.1rem;
+            cursor: pointer;
+        }
+        .wash-care-section {
+            margin-top: 1rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 0;
+        }
+        .wash-care-section summary {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            font-weight: 500;
+            color: #666;
+            background: #f9fafb;
+            border-radius: 6px;
+        }
+        .wash-care-section[open] summary {
+            border-bottom: 1px solid #e5e7eb;
+            border-radius: 6px 6px 0 0;
+        }
+        .wash-care-fields {
+            padding: 1rem;
+        }
+        .form-row {
+            display: flex;
+            gap: 1rem;
+        }
+        .form-row .form-group {
+            flex: 1;
+        }
+        .checkbox-row {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+            padding-top: 1.5rem;
+        }
+        .checkbox-row label {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-weight: normal;
+            cursor: pointer;
+        }
+        .item-wash-care {
+            margin-top: 0.5rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+            align-items: center;
+        }
+        .wash-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #666;
+            margin-right: 0.25rem;
+        }
+        .wash-badge {
+            display: inline-block;
+            padding: 0.15rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+        .wash-badge.temp-cold { background: #dbeafe; color: #1e40af; }
+        .wash-badge.temp-warm { background: #fef3c7; color: #92400e; }
+        .wash-badge.temp-hot { background: #fee2e2; color: #991b1b; }
+        .wash-badge.dry { background: #e0e7ff; color: #3730a3; }
+        .wash-badge.color-group { background: #f3e8ff; color: #6b21a8; }
+        .wash-badge.delicate { background: #fce7f3; color: #9d174d; }
+        .wash-badge.separate { background: #fef2f2; color: #dc2626; }
+        .wash-care-notes {
+            font-size: 0.75rem;
+            color: #666;
+            font-style: italic;
+            margin-top: 0.25rem;
+        }
         .toast {
             position: fixed;
             bottom: 2rem;
@@ -843,6 +933,35 @@
                     <label for="itemNotes">Notes (optional)</label>
                     <textarea id="itemNotes" rows="3" placeholder="Any additional notes..."></textarea>
                 </div>
+                <details class="wash-care-section">
+                    <summary>Wash Care (optional)</summary>
+                    <div class="wash-care-fields">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="itemWashTemp">Temperature</label>
+                                <input type="text" id="itemWashTemp" placeholder="e.g., tap cold, cold, warm">
+                            </div>
+                            <div class="form-group">
+                                <label for="itemDryMethod">Dry Method</label>
+                                <input type="text" id="itemDryMethod" placeholder="e.g., tumble low, hang dry">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="itemColorGroup">Color Group</label>
+                                <input type="text" id="itemColorGroup" placeholder="e.g., whites, darks">
+                            </div>
+                            <div class="form-group checkbox-row">
+                                <label><input type="checkbox" id="itemDelicate"> Delicate</label>
+                                <label><input type="checkbox" id="itemSeparate"> Wash Alone</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="itemWashNotes">Wash Notes</label>
+                            <input type="text" id="itemWashNotes" placeholder="e.g., Use setting 2 on LG washer">
+                        </div>
+                    </div>
+                </details>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save Item</button>
@@ -1149,6 +1268,7 @@
                             <span class="tag fit">${escapeHtml(item.fit)}</span>
                         </div>
                         ${item.notes ? `<div class="item-notes">${escapeHtml(item.notes)}</div>` : ''}
+                        ${renderWashCare(item.wash_care)}
                         <div class="item-id">ID: ${escapeHtml(item.id)}</div>
                         <div class="item-actions">
                             <label class="btn btn-upload">
@@ -1189,6 +1309,49 @@
             return div.innerHTML;
         }
 
+        function renderWashCare(washCare) {
+            if (!washCare) return '';
+            const badges = [];
+
+            // Temperature badge - color based on temp keywords
+            if (washCare.wash_temp) {
+                let tempClass = 'temp-cold';
+                const temp = washCare.wash_temp.toLowerCase();
+                if (temp.includes('hot')) tempClass = 'temp-hot';
+                else if (temp.includes('warm')) tempClass = 'temp-warm';
+                badges.push(`<span class="wash-badge ${tempClass}">${escapeHtml(washCare.wash_temp)}</span>`);
+            }
+
+            // Dry method badge
+            if (washCare.dry_method) {
+                badges.push(`<span class="wash-badge dry">${escapeHtml(washCare.dry_method)}</span>`);
+            }
+
+            // Color group badge
+            if (washCare.color_group) {
+                badges.push(`<span class="wash-badge color-group">${escapeHtml(washCare.color_group)}</span>`);
+            }
+
+            // Delicate badge
+            if (washCare.delicate) {
+                badges.push(`<span class="wash-badge delicate">Gentle</span>`);
+            }
+
+            // Separate badge
+            if (washCare.separate) {
+                badges.push(`<span class="wash-badge separate">Wash Alone</span>`);
+            }
+
+            let html = '';
+            if (badges.length > 0) {
+                html += `<div class="item-wash-care"><span class="wash-label">Wash:</span>${badges.join('')}</div>`;
+            }
+            if (washCare.notes) {
+                html += `<div class="wash-care-notes">${escapeHtml(washCare.notes)}</div>`;
+            }
+            return html;
+        }
+
         function extractNumber(id) {
             // Extract all digits from the ID and parse as a number
             // e.g., "SH-BEIGE-02" -> 2, "TR-GRAY-15" -> 15, "item_pants_3" -> 3
@@ -1202,6 +1365,8 @@
             document.getElementById('modalTitle').textContent = 'Add Item';
             document.getElementById('itemForm').reset();
             document.getElementById('itemId').value = '';
+            // Close wash care section for new items
+            document.querySelector('.wash-care-section').open = false;
             document.getElementById('itemModal').classList.add('show');
         }
 
@@ -1217,6 +1382,24 @@
             document.getElementById('itemFit').value = item.fit;
             document.getElementById('itemSeason').value = item.season;
             document.getElementById('itemNotes').value = item.notes || '';
+
+            // Wash care fields
+            const wc = item.wash_care || {};
+            document.getElementById('itemWashTemp').value = wc.wash_temp || '';
+            document.getElementById('itemDryMethod').value = wc.dry_method || '';
+            document.getElementById('itemColorGroup').value = wc.color_group || '';
+            document.getElementById('itemDelicate').checked = wc.delicate || false;
+            document.getElementById('itemSeparate').checked = wc.separate || false;
+            document.getElementById('itemWashNotes').value = wc.notes || '';
+
+            // Auto-open wash care section if it has data
+            const washSection = document.querySelector('.wash-care-section');
+            if (wc.wash_temp || wc.dry_method || wc.color_group || wc.delicate || wc.separate || wc.notes) {
+                washSection.open = true;
+            } else {
+                washSection.open = false;
+            }
+
             document.getElementById('itemModal').classList.add('show');
         }
 
@@ -1776,13 +1959,31 @@
             e.preventDefault();
 
             const id = document.getElementById('itemId').value;
+
+            // Build wash_care object
+            const washCare = {};
+            const washTemp = document.getElementById('itemWashTemp').value;
+            const dryMethod = document.getElementById('itemDryMethod').value;
+            const colorGroup = document.getElementById('itemColorGroup').value;
+            const delicate = document.getElementById('itemDelicate').checked;
+            const separate = document.getElementById('itemSeparate').checked;
+            const washNotes = document.getElementById('itemWashNotes').value;
+
+            if (washTemp) washCare.wash_temp = washTemp;
+            if (dryMethod) washCare.dry_method = dryMethod;
+            if (colorGroup) washCare.color_group = colorGroup;
+            if (delicate) washCare.delicate = true;
+            if (separate) washCare.separate = true;
+            if (washNotes) washCare.notes = washNotes;
+
             const data = {
                 item: document.getElementById('itemName').value,
                 category: document.getElementById('itemCategory').value,
                 color: document.getElementById('itemColor').value,
                 fit: document.getElementById('itemFit').value,
                 season: document.getElementById('itemSeason').value,
-                notes: document.getElementById('itemNotes').value || null
+                notes: document.getElementById('itemNotes').value || null,
+                wash_care: Object.keys(washCare).length > 0 ? washCare : null
             };
 
             try {

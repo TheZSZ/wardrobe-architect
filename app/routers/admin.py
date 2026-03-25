@@ -80,7 +80,7 @@ async def login(
             value=password,
             httponly=True,
             max_age=86400,  # 24 hours
-            samesite="strict",
+            samesite="lax",  # "strict" breaks POST->redirect->GET flow
         )
         return response
     else:
@@ -294,10 +294,14 @@ async def get_stats(
 # Log source definitions
 LOG_SOURCES = {
     # Docker containers
-    "wardrobe-api": {"type": "docker", "label": "wardrobe-api", "group": "Docker Containers"},
-    "wardrobe-db": {"type": "docker", "label": "wardrobe-db", "group": "Docker Containers"},
-    "wardrobe-clamav": {"type": "docker", "label": "wardrobe-clamav", "group": "Docker Containers"},
-    "wardrobe-nginx": {"type": "docker", "label": "wardrobe-nginx", "group": "Docker Containers"},
+    "wardrobe-api": {"type": "docker", "label": "API Container", "group": "Docker"},
+    "wardrobe-db": {"type": "docker", "label": "Database Container", "group": "Docker"},
+    "wardrobe-clamav": {"type": "docker", "label": "ClamAV Container", "group": "Docker"},
+    "wardrobe-nginx": {"type": "docker", "label": "Nginx Container", "group": "Docker"},
+    # Nginx log files
+    "nginx-access": {"type": "file", "path": "/var/log/nginx/access.log", "label": "Nginx Access", "group": "Nginx"},
+    "nginx-error": {"type": "file", "path": "/var/log/nginx/error.log", "label": "Nginx Errors", "group": "Nginx"},
+    "nginx-blocked": {"type": "file", "path": "/var/log/nginx/blocked.log", "label": "Nginx Blocked", "group": "Nginx"},
 }
 
 
@@ -334,6 +338,37 @@ def _read_docker_logs(
         return [], f"Error reading Docker logs: {e}"
 
 
+def _read_file_logs(
+    filepath: str, lines: int, search: Optional[str]
+) -> tuple[list[str], Optional[str]]:
+    """Read logs from a file (tail -n style)."""
+    from collections import deque
+
+    try:
+        log_path = Path(filepath)
+        if not log_path.exists():
+            return [], f"Log file not found: {filepath}"
+
+        # Read last N lines efficiently
+        with open(log_path, 'r', encoding='utf-8', errors='replace') as f:
+            all_lines = deque(f, maxlen=lines)
+
+        result = list(all_lines)
+        result = [line.rstrip() for line in result]
+        result.reverse()  # Newest first
+
+        if search:
+            result = [line for line in result if search.lower() in line.lower()]
+
+        return result, None
+
+    except PermissionError:
+        return [], f"Permission denied: {filepath}"
+    except Exception as e:
+        logger.error(f"File logs error: {e}")
+        return [], f"Error reading log file: {e}"
+
+
 @router.get("/logs", response_class=HTMLResponse)
 async def view_logs(
     request: Request,
@@ -342,7 +377,7 @@ async def view_logs(
     search: Optional[str] = None,
     authenticated: bool = Depends(verify_admin_session),
 ):
-    """View logs from Docker containers."""
+    """View logs from Docker containers or log files."""
     if not authenticated:
         return RedirectResponse(url="/admin/login", status_code=303)
 
@@ -351,7 +386,14 @@ async def view_logs(
         source = "wardrobe-api"  # Default
 
     source_info = LOG_SOURCES[source]
-    log_lines, error_message = _read_docker_logs(source, lines, search)
+
+    # Read logs based on source type
+    if source_info["type"] == "docker":
+        log_lines, error_message = _read_docker_logs(source, lines, search)
+    elif source_info["type"] == "file":
+        log_lines, error_message = _read_file_logs(source_info["path"], lines, search)
+    else:
+        log_lines, error_message = [], f"Unknown source type: {source_info['type']}"
 
     return templates.TemplateResponse(
         request,
@@ -468,6 +510,77 @@ async def admin_redoc(
         openapi_url="/openapi.json",
         title="Wardrobe Architect API - ReDoc",
     )
+
+
+@router.get("/openapi-chatgpt.json", include_in_schema=False)
+async def get_chatgpt_openapi(
+    request: Request,
+    authenticated: bool = Depends(verify_admin_session),
+):
+    """
+    Get OpenAPI spec filtered for ChatGPT GPT Actions.
+
+    Includes only the core wardrobe API endpoints (items, images),
+    excluding admin panel, web UI, and OAuth routes.
+    ChatGPT Actions has a limit of 30 actions - this returns 12.
+    """
+    if not authenticated:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Admin authentication required")
+
+    from fastapi.openapi.utils import get_openapi
+
+    # Get the full OpenAPI spec - need to access the app
+    app = request.app
+    openapi_schema = get_openapi(
+        title="Wardrobe Architect API",
+        version="1.0.0",
+        description="API for managing wardrobe items and images. For ChatGPT GPT Actions.",
+        routes=app.routes,
+    )
+
+    # Paths to INCLUDE (ChatGPT-relevant endpoints only)
+    chatgpt_paths = {
+        # Item operations
+        "/items": ["get", "post"],
+        "/items/{item_id}": ["get", "put", "delete"],
+        # Image operations
+        "/items/{item_id}/images": ["get", "post"],
+        "/items/{item_id}/images/order": ["put"],
+        "/images/{image_id}": ["get", "delete"],
+        "/images/{image_id}/crop": ["put"],
+        # Utility
+        "/health": ["get"],
+    }
+
+    # Filter paths
+    filtered_paths = {}
+    for path, methods in chatgpt_paths.items():
+        if path in openapi_schema.get("paths", {}):
+            filtered_paths[path] = {
+                method: openapi_schema["paths"][path][method]
+                for method in methods
+                if method in openapi_schema["paths"][path]
+            }
+
+    openapi_schema["paths"] = filtered_paths
+
+    # Update info for ChatGPT
+    openapi_schema["info"]["title"] = "Wardrobe Architect"
+    openapi_schema["info"]["description"] = (
+        "Manage your wardrobe items and images. "
+        "Create, update, delete clothing items and upload photos."
+    )
+
+    # Remove unnecessary tags
+    chatgpt_tags = {"Items", "Images", "Utility"}
+    if "tags" in openapi_schema:
+        openapi_schema["tags"] = [
+            tag for tag in openapi_schema["tags"]
+            if tag.get("name") in chatgpt_tags
+        ]
+
+    return openapi_schema
 
 
 # ==================== User Management ====================

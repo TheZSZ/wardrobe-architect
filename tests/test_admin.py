@@ -416,3 +416,117 @@ class TestAdminLoginFlow:
     def test_login_with_error_param(self, admin_client):
         response = admin_client.get("/admin/login?error=Test+error")
         assert response.status_code == 200
+
+
+class TestFileBasedLogs:
+    """Test file-based log sources (nginx logs)."""
+
+    def test_nginx_access_log_source_exists(self, authenticated_client):
+        """Test that nginx-access source is available."""
+        response = authenticated_client.get("/admin/logs?source=nginx-access")
+        assert response.status_code == 200
+        assert "Nginx Access" in response.text
+
+    def test_nginx_error_log_source_exists(self, authenticated_client):
+        """Test that nginx-error source is available."""
+        response = authenticated_client.get("/admin/logs?source=nginx-error")
+        assert response.status_code == 200
+        assert "Nginx Errors" in response.text
+
+    def test_nginx_blocked_log_source_exists(self, authenticated_client):
+        """Test that nginx-blocked source is available."""
+        response = authenticated_client.get("/admin/logs?source=nginx-blocked")
+        assert response.status_code == 200
+        assert "Nginx Blocked" in response.text
+
+    def test_file_log_shows_error_for_missing_file(self, authenticated_client):
+        """Test that missing log file shows appropriate message."""
+        response = authenticated_client.get("/admin/logs?source=nginx-access")
+        assert response.status_code == 200
+        # Should show error message about file not found
+        assert "not found" in response.text.lower() or "Nginx Access" in response.text
+
+
+class TestReadFileLogs:
+    """Test _read_file_logs function directly."""
+
+    def test_read_file_logs_returns_lines(self, tmp_path):
+        """Test reading logs from a file."""
+        from app.routers.admin import _read_file_logs
+
+        log_file = tmp_path / "test.log"
+        log_file.write_text("line 1\nline 2\nline 3\n")
+
+        lines, error = _read_file_logs(str(log_file), 10, None)
+        assert error is None
+        assert len(lines) == 3
+        # Newest first (reversed)
+        assert lines[0] == "line 3"
+        assert lines[2] == "line 1"
+
+    def test_read_file_logs_respects_limit(self, tmp_path):
+        """Test that line limit is respected."""
+        from app.routers.admin import _read_file_logs
+
+        log_file = tmp_path / "test.log"
+        log_file.write_text("\n".join([f"line {i}" for i in range(100)]))
+
+        lines, error = _read_file_logs(str(log_file), 10, None)
+        assert error is None
+        assert len(lines) == 10
+
+    def test_read_file_logs_filters_by_search(self, tmp_path):
+        """Test search filtering."""
+        from app.routers.admin import _read_file_logs
+
+        log_file = tmp_path / "test.log"
+        log_file.write_text("INFO: hello\nERROR: world\nINFO: test\n")
+
+        lines, error = _read_file_logs(str(log_file), 10, "ERROR")
+        assert error is None
+        assert len(lines) == 1
+        assert "ERROR" in lines[0]
+
+    def test_read_file_logs_missing_file(self, tmp_path):
+        """Test error handling for missing file."""
+        from app.routers.admin import _read_file_logs
+
+        lines, error = _read_file_logs(str(tmp_path / "nonexistent.log"), 10, None)
+        assert lines == []
+        assert error is not None
+        assert "not found" in error.lower()
+
+    def test_read_file_logs_case_insensitive_search(self, tmp_path):
+        """Test that search is case-insensitive."""
+        from app.routers.admin import _read_file_logs
+
+        log_file = tmp_path / "test.log"
+        log_file.write_text("ERROR: problem\nerror: another\nINFO: ok\n")
+
+        lines, error = _read_file_logs(str(log_file), 10, "error")
+        assert error is None
+        assert len(lines) == 2
+
+
+class TestRequestIdMiddleware:
+    """Test request ID middleware."""
+
+    def test_response_includes_request_id_header(self, admin_client):
+        """Test that responses include X-Request-ID header."""
+        response = admin_client.get("/health")
+        assert "X-Request-ID" in response.headers
+        assert len(response.headers["X-Request-ID"]) == 8  # UUID[:8]
+
+    def test_request_id_is_unique_per_request(self, admin_client):
+        """Test that each request gets a unique ID."""
+        response1 = admin_client.get("/health")
+        response2 = admin_client.get("/health")
+        assert response1.headers["X-Request-ID"] != response2.headers["X-Request-ID"]
+
+    def test_client_provided_request_id_is_used(self, admin_client):
+        """Test that client-provided X-Request-ID is preserved."""
+        response = admin_client.get(
+            "/health",
+            headers={"X-Request-ID": "my-custom-id"}
+        )
+        assert response.headers["X-Request-ID"] == "my-custom-id"

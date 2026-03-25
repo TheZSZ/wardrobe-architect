@@ -236,6 +236,97 @@
             color: #666;
         }
 
+        .container-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+
+        .container-card {
+            background: #0d0d0d;
+            border-radius: 6px;
+            padding: 1rem;
+            border: 1px solid #262626;
+        }
+
+        .container-card.not-running {
+            opacity: 0.5;
+        }
+
+        .container-card h3 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .container-card .container-name {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .container-card .container-icon {
+            font-size: 1.1rem;
+        }
+
+        .container-card .metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+        }
+
+        .container-card .metric {
+            background: #1a1a1a;
+            border-radius: 4px;
+            padding: 0.5rem;
+        }
+
+        .container-card .metric-label {
+            font-size: 0.65rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .container-card .metric-value {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #e5e5e5;
+        }
+
+        .container-card .metric-value.high {
+            color: #f87171;
+        }
+
+        .container-card .metric-value.medium {
+            color: #facc15;
+        }
+
+        .container-card .metric-value.low {
+            color: #4ade80;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            margin-top: 0.25rem;
+            overflow: hidden;
+        }
+
+        .progress-bar .fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        .progress-bar .fill.low { background: #4ade80; }
+        .progress-bar .fill.medium { background: #facc15; }
+        .progress-bar .fill.high { background: #f87171; }
+
         @media (max-width: 768px) {
             .container {
                 padding: 1rem;
@@ -349,19 +440,30 @@
 
         <div class="section">
             <div class="section-header">
+                <h2>Container Stats</h2>
+            </div>
+            <div class="section-content">
+                <div class="container-grid" id="container-grid">
+                    <div class="loading">Loading container stats...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
                 <h2>Live Metrics</h2>
                 <span class="last-updated">Last updated: <span id="last-updated">--</span></span>
             </div>
             <div class="section-content">
                 <div class="charts-grid">
                     <div class="chart-card">
-                        <h3>CPU Usage</h3>
+                        <h3>CPU Usage (System)</h3>
                         <div class="chart-container-small">
                             <canvas id="cpuChart"></canvas>
                         </div>
                     </div>
                     <div class="chart-card">
-                        <h3>Memory Usage</h3>
+                        <h3>Memory Usage (System)</h3>
                         <div class="chart-container-small">
                             <canvas id="memoryChart"></canvas>
                         </div>
@@ -436,6 +538,108 @@
             document.getElementById('diskChart').getContext('2d'),
             createChartConfig('Disk %', '#4ade80', 'rgba(74, 222, 128, 0.2)')
         );
+
+        const containerIcons = {
+            'wardrobe-api': '🚀',
+            'wardrobe-db': '🗄️',
+            'wardrobe-nginx': '🌐',
+            'wardrobe-clamav': '🛡️'
+        };
+
+        const containerLabels = {
+            'wardrobe-api': 'API Server',
+            'wardrobe-db': 'PostgreSQL',
+            'wardrobe-nginx': 'Nginx',
+            'wardrobe-clamav': 'ClamAV'
+        };
+
+        function getLevel(pct) {
+            if (pct >= 80) return 'high';
+            if (pct >= 50) return 'medium';
+            return 'low';
+        }
+
+        function updateContainerStats(containers) {
+            const grid = document.getElementById('container-grid');
+            if (!containers || containers.error) {
+                grid.innerHTML = `<div class="loading">${containers?.error || 'Container stats unavailable'}</div>`;
+                return;
+            }
+
+            const containerOrder = ['wardrobe-api', 'wardrobe-db', 'wardrobe-nginx', 'wardrobe-clamav'];
+            let html = '';
+
+            for (const name of containerOrder) {
+                const stats = containers[name];
+                if (!stats) continue;
+
+                const isRunning = stats.status === 'running';
+                const icon = containerIcons[name] || '📦';
+                const label = containerLabels[name] || name;
+
+                if (!isRunning) {
+                    html += `
+                        <div class="container-card not-running">
+                            <h3>
+                                <span class="container-name">
+                                    <span class="container-icon">${icon}</span>
+                                    ${label}
+                                </span>
+                                <span class="status-badge error">
+                                    <span class="status-dot"></span>
+                                    Stopped
+                                </span>
+                            </h3>
+                        </div>
+                    `;
+                    continue;
+                }
+
+                const cpuLevel = getLevel(stats.cpu_pct);
+                const memLevel = getLevel(stats.mem_pct);
+
+                html += `
+                    <div class="container-card">
+                        <h3>
+                            <span class="container-name">
+                                <span class="container-icon">${icon}</span>
+                                ${label}
+                            </span>
+                            <span class="status-badge ok">
+                                <span class="status-dot"></span>
+                                Running
+                            </span>
+                        </h3>
+                        <div class="metrics">
+                            <div class="metric">
+                                <div class="metric-label">CPU</div>
+                                <div class="metric-value ${cpuLevel}">${stats.cpu_pct.toFixed(1)}%</div>
+                                <div class="progress-bar">
+                                    <div class="fill ${cpuLevel}" style="width: ${Math.min(stats.cpu_pct, 100)}%"></div>
+                                </div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Memory</div>
+                                <div class="metric-value ${memLevel}">${stats.mem_pct.toFixed(1)}%</div>
+                                <div class="progress-bar">
+                                    <div class="fill ${memLevel}" style="width: ${Math.min(stats.mem_pct, 100)}%"></div>
+                                </div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Mem Used</div>
+                                <div class="metric-value">${stats.mem_used_mb.toFixed(0)} MB</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">PIDs</div>
+                                <div class="metric-value">${stats.pids}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            grid.innerHTML = html;
+        }
 
         function updateUI(data) {
             // Status
@@ -513,6 +717,9 @@
             // Network I/O
             document.getElementById('net-sent').textContent = data.network?.bytes_sent_mb?.toFixed(2) ?? '--';
             document.getElementById('net-recv').textContent = data.network?.bytes_recv_mb?.toFixed(2) ?? '--';
+
+            // Container stats
+            updateContainerStats(data.containers);
 
             // Last updated
             document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();

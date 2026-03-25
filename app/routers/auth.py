@@ -70,7 +70,7 @@ async def login_with_passcode(
         value=session_token,
         httponly=True,
         max_age=86400 if not settings.dev_mode else 300,  # 24h or 5min in dev
-        samesite="strict",
+        samesite="lax",  # "strict" breaks POST->redirect->GET flow
     )
 
     logger.info(f"User logged in: {user.email}")
@@ -232,7 +232,7 @@ async def google_login_callback(
             value=session_token,
             httponly=True,
             max_age=86400 if not settings.dev_mode else 300,
-            samesite="strict",
+            samesite="lax",  # "strict" breaks OAuth redirect flow
         )
 
         logger.info(f"User logged in via Google: {user.email}")

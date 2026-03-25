@@ -239,6 +239,7 @@
             </div>
         </div>
         <div class="header-actions">
+            <button id="download-btn" class="btn btn-primary" onclick="downloadLogs()">Download Logs</button>
             <a href="/admin" class="btn btn-secondary">Back to Dashboard</a>
         </div>
     </header>
@@ -297,8 +298,69 @@
     </div>
 
     <script>
-        // Auto-refresh every 30 seconds
-        setTimeout(() => location.reload(), 30000);
+        // Download logs as text file
+        function downloadLogs() {
+            const logContent = document.getElementById('log-content');
+            const lines = Array.from(logContent.querySelectorAll('.log-line'))
+                .map(el => el.textContent)
+                .join('\n');
+
+            const source = '{{ source }}';
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const filename = `${source}-logs-${timestamp}.txt`;
+
+            const blob = new Blob([lines], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Auto-refresh via AJAX to preserve scroll position
+        let autoRefreshEnabled = true;
+
+        async function refreshLogs() {
+            if (!autoRefreshEnabled) return;
+
+            const logContent = document.getElementById('log-content');
+            const scrollTop = logContent.scrollTop;
+            const wasAtBottom = logContent.scrollHeight - logContent.scrollTop <= logContent.clientHeight + 50;
+
+            try {
+                const response = await fetch(window.location.href);
+                const html = await response.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const newContent = doc.getElementById('log-content');
+
+                if (newContent) {
+                    logContent.innerHTML = newContent.innerHTML;
+
+                    // If was at bottom, scroll to bottom (follow new logs)
+                    // Otherwise restore previous scroll position
+                    if (wasAtBottom) {
+                        logContent.scrollTop = logContent.scrollHeight;
+                    } else {
+                        logContent.scrollTop = scrollTop;
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to refresh logs:', e);
+            }
+        }
+
+        // Refresh every 30 seconds
+        setInterval(refreshLogs, 30000);
+
+        // Scroll to bottom on initial load
+        document.addEventListener('DOMContentLoaded', () => {
+            const logContent = document.getElementById('log-content');
+            logContent.scrollTop = logContent.scrollHeight;
+        });
     </script>
 </body>
 </html>

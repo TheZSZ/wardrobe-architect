@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
@@ -24,6 +25,24 @@ request_logger = logging.getLogger("app.requests")
 limiter = Limiter(key_func=get_remote_address)
 
 
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """Middleware to add unique request ID for tracking/forensics."""
+
+    async def dispatch(self, request: Request, call_next):
+        # Generate or use existing request ID (e.g., from load balancer)
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())[:8]
+
+        # Store in request state for use by other middleware/handlers
+        request.state.request_id = request_id
+
+        response = await call_next(request)
+
+        # Add to response headers
+        response.headers["X-Request-ID"] = request_id
+
+        return response
+
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Middleware to log requests in a clean JSON format."""
 
@@ -39,6 +58,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         duration_ms = round((time.time() - start_time) * 1000, 2)
 
+        # Get request ID if available
+        request_id = getattr(request.state, "request_id", None)
+
         # Build log entry
         log_entry = {
             "method": request.method,
@@ -46,6 +68,15 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             "status": response.status_code,
             "duration_ms": duration_ms,
         }
+
+        # Add request ID if present
+        if request_id:
+            log_entry["request_id"] = request_id
+
+        # Add client IP
+        client_ip = request.headers.get("X-Real-IP") or request.client.host
+        if client_ip:
+            log_entry["client_ip"] = client_ip
 
         # Add query params if present (but hide sensitive ones)
         if request.query_params:
@@ -147,6 +178,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Request logging middleware - logs all requests in JSON format
 app.add_middleware(RequestLoggingMiddleware)
+
+# Request ID middleware - adds unique ID for tracking/forensics
+# Added after logging so it runs first (middleware order is LIFO)
+app.add_middleware(RequestIDMiddleware)
 
 # CORS middleware - configured via CORS_ORIGINS environment variable
 # For personal use, leave CORS_ORIGINS empty (same-origin only)
@@ -317,7 +352,112 @@ async def health_check(settings: Settings = Depends(get_settings)):
     except Exception as e:
         health["process"] = {"error": str(e)}
 
+    # Docker container stats
+    try:
+        health["containers"] = _get_docker_stats()
+    except Exception as e:
+        health["containers"] = {"error": str(e)}
+
     return health
+
+
+def _get_docker_stats() -> dict:
+    """Get CPU and memory stats for Docker containers."""
+    import subprocess
+    import json
+
+    containers = ["wardrobe-api", "wardrobe-db", "wardrobe-nginx", "wardrobe-clamav"]
+    stats = {}
+
+    try:
+        # Use docker stats with --no-stream for a single snapshot
+        # Format: JSON with container name, CPU %, memory usage/limit, memory %
+        result = subprocess.run(
+            [
+                "docker", "stats", "--no-stream",
+                "--format", '{"name":"{{.Name}}","cpu":"{{.CPUPerc}}","mem":"{{.MemUsage}}","mem_pct":"{{.MemPerc}}","net":"{{.NetIO}}","block":"{{.BlockIO}}","pids":"{{.PIDs}}"}',
+            ] + containers,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+
+        if result.returncode == 0 and result.stdout.strip():
+            for line in result.stdout.strip().split("\n"):
+                try:
+                    data = json.loads(line)
+                    name = data["name"]
+                    # Parse CPU percentage (e.g., "0.50%" -> 0.5)
+                    cpu_str = data["cpu"].rstrip("%")
+                    cpu_pct = float(cpu_str) if cpu_str else 0.0
+
+                    # Parse memory percentage
+                    mem_pct_str = data["mem_pct"].rstrip("%")
+                    mem_pct = float(mem_pct_str) if mem_pct_str else 0.0
+
+                    # Parse memory usage (e.g., "50.5MiB / 7.5GiB")
+                    mem_parts = data["mem"].split(" / ")
+                    mem_used = _parse_size(mem_parts[0]) if mem_parts else 0
+                    mem_limit = _parse_size(mem_parts[1]) if len(mem_parts) > 1 else 0
+
+                    # Parse network I/O (e.g., "1.5kB / 2.3MB")
+                    net_parts = data["net"].split(" / ")
+                    net_in = _parse_size(net_parts[0]) if net_parts else 0
+                    net_out = _parse_size(net_parts[1]) if len(net_parts) > 1 else 0
+
+                    # Parse PIDs
+                    pids = int(data["pids"]) if data["pids"].isdigit() else 0
+
+                    stats[name] = {
+                        "cpu_pct": round(cpu_pct, 2),
+                        "mem_pct": round(mem_pct, 2),
+                        "mem_used_mb": round(mem_used / (1024 * 1024), 2),
+                        "mem_limit_mb": round(mem_limit / (1024 * 1024), 2),
+                        "net_in_mb": round(net_in / (1024 * 1024), 3),
+                        "net_out_mb": round(net_out / (1024 * 1024), 3),
+                        "pids": pids,
+                        "status": "running",
+                    }
+                except (json.JSONDecodeError, ValueError, KeyError):
+                    continue
+
+        # Mark any missing containers
+        for container in containers:
+            if container not in stats:
+                stats[container] = {"status": "not_running"}
+
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout"}
+    except FileNotFoundError:
+        return {"error": "docker_not_available"}
+
+    return stats
+
+
+def _parse_size(size_str: str) -> float:
+    """Parse size string like '50.5MiB' or '1.2GB' to bytes."""
+    size_str = size_str.strip()
+    if not size_str:
+        return 0.0
+
+    units = {
+        "B": 1,
+        "KB": 1024, "KIB": 1024, "K": 1024,
+        "MB": 1024**2, "MIB": 1024**2, "M": 1024**2,
+        "GB": 1024**3, "GIB": 1024**3, "G": 1024**3,
+        "TB": 1024**4, "TIB": 1024**4, "T": 1024**4,
+    }
+
+    # Extract number and unit
+    import re
+    match = re.match(r"([\d.]+)\s*([A-Za-z]*)", size_str)
+    if not match:
+        return 0.0
+
+    value = float(match.group(1))
+    unit = match.group(2).upper() if match.group(2) else "B"
+
+    return value * units.get(unit, 1)
 
 
 @app.get("/config", tags=["Utility"])

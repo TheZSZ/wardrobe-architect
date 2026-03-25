@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS wardrobe_items (
     data JSONB NOT NULL,
     synced_at TIMESTAMP DEFAULT NOW(),
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    wash_care JSONB
 );
 
 -- Image metadata table
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS sync_log (
 CREATE INDEX IF NOT EXISTS idx_items_category ON wardrobe_items ((data->>'category'));
 CREATE INDEX IF NOT EXISTS idx_items_color ON wardrobe_items ((data->>'color'));
 CREATE INDEX IF NOT EXISTS idx_items_season ON wardrobe_items ((data->>'season'));
+CREATE INDEX IF NOT EXISTS idx_items_wash_care ON wardrobe_items USING GIN (wash_care);
 CREATE INDEX IF NOT EXISTS idx_images_item_id ON image_metadata (item_id);
 CREATE INDEX IF NOT EXISTS idx_images_display_order ON image_metadata (item_id, display_order);
 

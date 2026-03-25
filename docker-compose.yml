@@ -55,12 +55,24 @@ services:
       - "8000"
     ports:
       - "127.0.0.1:8000:8000"  # Localhost only, force traffic through nginx
+    # Security hardening
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Add docker group for socket access (needed for log viewing)
+    # Docker Desktop maps socket as root:root inside container, so we add group 0
+    group_add:
+      - "0"
     volumes:
-      - ./images:/app/images
+      - ./images:/app/images                          # Writable: image uploads
       - ./htmlcov:/app/htmlcov:ro
-      - ./logs:/var/log
+      - ./logs:/var/log                               # Writable: application logs
       - ./logs/nginx:/var/log/nginx:ro
-      - ./migrations:/app/migrations:ro  # For pending migration check
+      - ./migrations:/app/migrations:ro               # For pending migration check
       - /var/run/docker.sock:/var/run/docker.sock:ro  # For docker logs access
     environment:
       - API_KEY=${API_KEY:-dummy}

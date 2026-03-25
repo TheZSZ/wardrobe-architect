@@ -8,7 +8,7 @@ A FastAPI backend for managing wardrobe items with image storage. Designed for i
 
 ```bash
 make build          # Build Docker images
-make test           # Run tests with coverage (238 tests, 71% coverage)
+make test           # Run tests with coverage (250 tests, 71% coverage)
 make lint           # Run flake8 linter
 make run-dummy      # Run in dummy mode (HTTP:80, HTTPS:443)
 make stop           # Stop all containers (data persists)
@@ -111,11 +111,26 @@ tests/
 
 Access at `/admin` (requires `ADMIN_PASSWORD`):
 - Dashboard: Stats, sync status, recent logs
-- `/admin/health` - Live system metrics with charts
+- `/admin/health` - Live system metrics with charts (includes container stats)
 - `/admin/db` - Database browser
-- `/admin/logs` - Docker container logs
+- `/admin/logs` - Docker container logs and nginx logs
 - `/admin/users` - User management
 - `/admin/docs` - OpenAPI docs
+
+## ChatGPT GPT Actions
+
+ChatGPT GPT Actions has a 30-action limit. Use the filtered OpenAPI spec (requires admin auth):
+
+```
+GET /admin/openapi-chatgpt.json
+```
+
+This returns only the 12 core API actions needed for ChatGPT:
+- **Items**: GET/POST /items, GET/PUT/DELETE /items/{id}
+- **Images**: POST/GET /items/{id}/images, GET/DELETE /images/{id}, PUT order/crop
+- **Utility**: GET /health
+
+The full OpenAPI spec (`/openapi.json`) includes all 49 endpoints including admin panel and OAuth routes.
 
 ## Request Logging
 
