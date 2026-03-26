@@ -10,30 +10,26 @@ build:
 # Run tests with coverage
 test:
 	@$(DUMMY_ENV) docker compose run --rm test
+	@sudo chown -R $$(id -u):$$(id -g) htmlcov 2>/dev/null || true
 
 # Run flake8 linter
 lint:
 	@$(DUMMY_ENV) docker compose run --rm lint && echo "✓ Lint passed"
 
 # Run the API server
-# Usage: API_KEY=xxx GOOGLE_SHEET_ID=xxx GOOGLE_SHEETS_CREDENTIALS_JSON='{}' make run
+# Option 1: Use .env file (docker compose reads it automatically)
+# Option 2: Pass env vars: API_KEY=xxx GOOGLE_SHEET_ID=xxx GOOGLE_SHEETS_CREDENTIALS_JSON='{}' make run
 run:
-	@if [ -z "$(API_KEY)" ]; then \
-		echo "Error: API_KEY is not set"; \
-		echo "Usage: API_KEY=xxx GOOGLE_SHEET_ID=xxx GOOGLE_SHEETS_CREDENTIALS_JSON='{...}' make run"; \
+	@if [ -z "$(API_KEY)" ] && [ ! -f .env ]; then \
+		echo "Error: No .env file found and API_KEY is not set"; \
+		echo "Either create a .env file or run:"; \
+		echo "  API_KEY=xxx GOOGLE_SHEET_ID=xxx GOOGLE_SHEETS_CREDENTIALS_JSON='{...}' make run"; \
 		exit 1; \
 	fi
-	@if [ -z "$(GOOGLE_SHEET_ID)" ]; then \
-		echo "Error: GOOGLE_SHEET_ID is not set"; \
-		echo "Usage: API_KEY=xxx GOOGLE_SHEET_ID=xxx GOOGLE_SHEETS_CREDENTIALS_JSON='{...}' make run"; \
-		exit 1; \
-	fi
-	@if [ -z "$(GOOGLE_SHEETS_CREDENTIALS_JSON)" ]; then \
-		echo "Error: GOOGLE_SHEETS_CREDENTIALS_JSON is not set"; \
-		echo "Usage: API_KEY=xxx GOOGLE_SHEET_ID=xxx GOOGLE_SHEETS_CREDENTIALS_JSON='{...}' make run"; \
-		exit 1; \
-	fi
-	docker compose up -d nginx
+	@docker compose up -d nginx
+	@echo "Services started (HTTP:80, HTTPS:443). Following logs..."
+	@echo "Ctrl+C to detach, 'make stop' to stop all containers."
+	@docker compose logs --tail=50 -f
 
 # Run the API server in dummy mode (in-memory storage, no Google Sheets)
 # Starts detached, then follows logs. Ctrl+C stops log viewing (containers keep running).

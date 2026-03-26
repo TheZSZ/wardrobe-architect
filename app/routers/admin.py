@@ -572,6 +572,31 @@ async def get_chatgpt_openapi(
         "Create, update, delete clothing items and upload photos."
     )
 
+    # Add security scheme
+    if "components" not in openapi_schema:
+        openapi_schema["components"] = {}
+    openapi_schema["components"]["securitySchemes"] = {
+        "ApiKeyAuth": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-API-Key",
+        }
+    }
+
+    # Apply security to all paths and remove x-api-key parameter
+    for path, methods in openapi_schema["paths"].items():
+        for method in methods:
+            if method in ["get", "post", "put", "delete", "patch"]:
+                # Remove x-api-key parameter if present
+                if "parameters" in openapi_schema["paths"][path][method]:
+                    openapi_schema["paths"][path][method]["parameters"] = [
+                        p for p in openapi_schema["paths"][path][method]["parameters"]
+                        if p.get("name") != "x-api-key"
+                    ]
+                # Add security requirement (except /health)
+                if path != "/health":
+                    openapi_schema["paths"][path][method]["security"] = [{"ApiKeyAuth": []}]
+
     # Remove unnecessary tags
     chatgpt_tags = {"Items", "Images", "Utility"}
     if "tags" in openapi_schema:
