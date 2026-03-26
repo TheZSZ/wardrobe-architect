@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from fastapi.responses import FileResponse
 from app.auth import verify_api_key, verify_api_key_or_query
 from app.config import Settings, get_settings
-from app.models.item import ImageInfo
+from app.models.item import ImageInfo, ImageOrderRequest
 from app.services.storage import StorageService, get_storage_service
 from app.services.sheets import SheetsService, get_sheets_service
 
@@ -171,7 +171,7 @@ async def delete_image(
 @router.put("/items/{item_id}/images/order")
 async def reorder_images(
     item_id: str,
-    image_ids: list[str] = Body(..., description="Ordered list of image IDs"),
+    body: ImageOrderRequest,
     storage: StorageService = Depends(get_storage),
     sheets: SheetsService = Depends(get_sheets),
     _: str = Depends(verify_api_key),
@@ -185,7 +185,7 @@ async def reorder_images(
             detail=f"Item with ID '{item_id}' not found",
         )
 
-    success = storage.reorder_images(item_id, image_ids)
+    success = storage.reorder_images(item_id, body.image_ids)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

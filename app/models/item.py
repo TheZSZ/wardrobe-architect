@@ -54,3 +54,8 @@ class ImageInfo(BaseModel):
     filename: str = Field(..., description="Original filename")
     url: str = Field(..., description="URL to retrieve the image")
     crop_region: Optional[CropRegion] = Field(None, description="Crop region for square thumbnail")
+
+
+class ImageOrderRequest(BaseModel):
+    """Request body for reordering images."""
+    image_ids: list[str] = Field(..., description="Ordered list of image IDs")

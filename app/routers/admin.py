@@ -553,6 +553,22 @@ async def get_chatgpt_openapi(
         "/health": ["get"],
     }
 
+    # Simple operation IDs for ChatGPT
+    operation_ids = {
+        ("/items", "get"): "listItems",
+        ("/items", "post"): "createItem",
+        ("/items/{item_id}", "get"): "getItem",
+        ("/items/{item_id}", "put"): "updateItem",
+        ("/items/{item_id}", "delete"): "deleteItem",
+        ("/items/{item_id}/images", "get"): "listImages",
+        ("/items/{item_id}/images", "post"): "uploadImage",
+        ("/items/{item_id}/images/order", "put"): "reorderImages",
+        ("/images/{image_id}", "get"): "getImage",
+        ("/images/{image_id}", "delete"): "deleteImage",
+        ("/images/{image_id}/crop", "put"): "setCrop",
+        ("/health", "get"): "healthCheck",
+    }
+
     # Filter paths
     filtered_paths = {}
     for path, methods in chatgpt_paths.items():
@@ -572,6 +588,11 @@ async def get_chatgpt_openapi(
         "Create, update, delete clothing items and upload photos."
     )
 
+    # Add server URL (derived from request)
+    scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+    host = request.headers.get("X-Forwarded-Host", request.headers.get("Host", request.url.netloc))
+    openapi_schema["servers"] = [{"url": f"{scheme}://{host}"}]
+
     # Add security scheme
     if "components" not in openapi_schema:
         openapi_schema["components"] = {}
@@ -583,10 +604,13 @@ async def get_chatgpt_openapi(
         }
     }
 
-    # Apply security to all paths and remove x-api-key parameter
+    # Apply security, simple operation IDs, and remove x-api-key parameter
     for path, methods in openapi_schema["paths"].items():
         for method in methods:
             if method in ["get", "post", "put", "delete", "patch"]:
+                # Set simple operation ID
+                if (path, method) in operation_ids:
+                    openapi_schema["paths"][path][method]["operationId"] = operation_ids[(path, method)]
                 # Remove x-api-key parameter if present
                 if "parameters" in openapi_schema["paths"][path][method]:
                     openapi_schema["paths"][path][method]["parameters"] = [
