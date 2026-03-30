@@ -5,7 +5,7 @@ from google.oauth2.service_account import Credentials
 from typing import Optional
 
 from app.config import Settings
-from app.models.item import WardrobeItem, WardrobeItemCreate, WardrobeItemUpdate
+from app.models.item import WardrobeItem, WardrobeItemCreate, WardrobeItemUpdate, WashCare
 from app.services.database import DatabaseService, get_database_service
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,14 @@ COLUMNS = {
     "fit": 5,
     "season": 6,
     "notes": 7,
+    # Wash care columns
+    "fabric": 8,
+    "wash_temp": 9,
+    "dry_method": 10,
+    "color_group": 11,
+    "delicate": 12,
+    "separate": 13,
+    "care_notes": 14,
 }
 
 
@@ -60,9 +68,48 @@ class SheetsService:
             self._sheet = spreadsheet.sheet1
         return self._sheet
 
+    def _parse_bool(self, value: str) -> Optional[bool]:
+        """Parse boolean from Sheets cell (TRUE/FALSE or Yes/No)."""
+        if not value:
+            return None
+        v = value.strip().upper()
+        if v in ('TRUE', 'YES', '1'):
+            return True
+        if v in ('FALSE', 'NO', '0'):
+            return False
+        return None
+
+    def _parse_wash_care(self, row: list) -> Optional[WashCare]:
+        """Parse wash care fields from row columns 8-14."""
+        # Check if any wash care data exists (0-indexed: col 8 = index 7)
+        fabric = str(row[7]).strip() if len(row) > 7 and row[7] else None
+        wash_temp = str(row[8]).strip() if len(row) > 8 and row[8] else None
+        dry_method = str(row[9]).strip() if len(row) > 9 and row[9] else None
+        color_group = str(row[10]).strip() if len(row) > 10 and row[10] else None
+        delicate = self._parse_bool(str(row[11])) if len(row) > 11 else None
+        separate = self._parse_bool(str(row[12])) if len(row) > 12 else None
+        care_notes = str(row[13]).strip() if len(row) > 13 and row[13] else None
+
+        # Only create WashCare if at least one field has data
+        if any([fabric, wash_temp, dry_method, color_group,
+                delicate is not None, separate is not None, care_notes]):
+            return WashCare(
+                fabric=fabric,
+                wash_temp=wash_temp,
+                dry_method=dry_method,
+                color_group=color_group,
+                delicate=delicate,
+                separate=separate,
+                notes=care_notes,
+            )
+        return None
+
     def _row_to_item(self, row: list, row_index: int) -> Optional[WardrobeItem]:
         if len(row) < 6 or not row[0]:
             return None
+
+        wash_care = self._parse_wash_care(row)
+
         return WardrobeItem(
             id=str(row[0]),
             item=str(row[1]) if len(row) > 1 else "",
@@ -71,12 +118,16 @@ class SheetsService:
             fit=str(row[4]) if len(row) > 4 else "",
             season=str(row[5]) if len(row) > 5 else "",
             notes=str(row[6]) if len(row) > 6 and row[6] else None,
+            wash_care=wash_care,
         )
 
     def _row_to_dict(self, row: list) -> Optional[dict]:
         """Convert row to dict for DB sync."""
         if len(row) < 6 or not row[0]:
             return None
+
+        wash_care = self._parse_wash_care(row)
+
         return {
             'id': str(row[0]),
             'item': str(row[1]) if len(row) > 1 else "",
@@ -85,6 +136,7 @@ class SheetsService:
             'fit': str(row[4]) if len(row) > 4 else "",
             'season': str(row[5]) if len(row) > 5 else "",
             'notes': str(row[6]) if len(row) > 6 and row[6] else None,
+            'wash_care': wash_care.model_dump() if wash_care else None,
         }
 
     def get_all_items(
@@ -138,10 +190,28 @@ class SheetsService:
 
         return str(max_id + 1)
 
+    def _bool_to_sheets(self, value: Optional[bool]) -> str:
+        """Convert boolean to Sheets-friendly string."""
+        if value is None:
+            return ""
+        return "TRUE" if value else "FALSE"
+
     def create_item(self, item_data: WardrobeItemCreate) -> WardrobeItem:
         """Create item - writes to Sheets first, then DB."""
         sheet = self._get_sheet()
         new_id = self._generate_next_id()
+
+        # Build wash care columns
+        wc = item_data.wash_care
+        wash_care_cols = [
+            wc.fabric or "" if wc else "",
+            wc.wash_temp or "" if wc else "",
+            wc.dry_method or "" if wc else "",
+            wc.color_group or "" if wc else "",
+            self._bool_to_sheets(wc.delicate) if wc else "",
+            self._bool_to_sheets(wc.separate) if wc else "",
+            wc.notes or "" if wc else "",
+        ]
 
         new_row = [
             new_id,
@@ -151,7 +221,7 @@ class SheetsService:
             item_data.fit,
             item_data.season,
             item_data.notes or "",
-        ]
+        ] + wash_care_cols
 
         # Write to Sheets first (source of truth)
         sheet.append_row(new_row)
@@ -189,6 +259,51 @@ class SheetsService:
             sheet.update_cell(row_index, COLUMNS["season"], update_data["season"])
         if "notes" in update_data:
             sheet.update_cell(row_index, COLUMNS["notes"], update_data["notes"] or "")
+
+        # Handle wash_care updates
+        if "wash_care" in update_data:
+            wc = update_data["wash_care"]
+            if wc is None:
+                # Clear all wash care columns
+                sheet.update_cell(row_index, COLUMNS["fabric"], "")
+                sheet.update_cell(row_index, COLUMNS["wash_temp"], "")
+                sheet.update_cell(row_index, COLUMNS["dry_method"], "")
+                sheet.update_cell(row_index, COLUMNS["color_group"], "")
+                sheet.update_cell(row_index, COLUMNS["delicate"], "")
+                sheet.update_cell(row_index, COLUMNS["separate"], "")
+                sheet.update_cell(row_index, COLUMNS["care_notes"], "")
+            else:
+                # Update wash care fields
+                if "fabric" in wc:
+                    sheet.update_cell(
+                        row_index, COLUMNS["fabric"], wc["fabric"] or ""
+                    )
+                if "wash_temp" in wc:
+                    sheet.update_cell(
+                        row_index, COLUMNS["wash_temp"], wc["wash_temp"] or ""
+                    )
+                if "dry_method" in wc:
+                    sheet.update_cell(
+                        row_index, COLUMNS["dry_method"], wc["dry_method"] or ""
+                    )
+                if "color_group" in wc:
+                    sheet.update_cell(
+                        row_index, COLUMNS["color_group"], wc["color_group"] or ""
+                    )
+                if "delicate" in wc:
+                    sheet.update_cell(
+                        row_index, COLUMNS["delicate"],
+                        self._bool_to_sheets(wc["delicate"])
+                    )
+                if "separate" in wc:
+                    sheet.update_cell(
+                        row_index, COLUMNS["separate"],
+                        self._bool_to_sheets(wc["separate"])
+                    )
+                if "notes" in wc:
+                    sheet.update_cell(
+                        row_index, COLUMNS["care_notes"], wc["notes"] or ""
+                    )
 
         logger.info(f"Updated item {item_id} in Sheets")
 

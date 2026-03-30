@@ -546,6 +546,8 @@ async def get_chatgpt_openapi(
         "/items/{item_id}": ["get", "put", "delete"],
         # Image operations
         "/items/{item_id}/images": ["get", "post"],
+        "/items/{item_id}/images/from-url": ["post"],  # Single URL upload
+        "/items/{item_id}/images/from-urls": ["post"],  # Batch URL upload
         "/items/{item_id}/images/order": ["put"],
         "/images/{image_id}": ["get", "delete"],
         "/images/{image_id}/crop": ["put"],
@@ -562,6 +564,8 @@ async def get_chatgpt_openapi(
         ("/items/{item_id}", "delete"): "deleteItem",
         ("/items/{item_id}/images", "get"): "listImages",
         ("/items/{item_id}/images", "post"): "uploadImage",
+        ("/items/{item_id}/images/from-url", "post"): "uploadImageFromUrl",
+        ("/items/{item_id}/images/from-urls", "post"): "uploadImagesFromUrls",
         ("/items/{item_id}/images/order", "put"): "reorderImages",
         ("/images/{image_id}", "get"): "getImage",
         ("/images/{image_id}", "delete"): "deleteImage",

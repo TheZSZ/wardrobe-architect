@@ -182,8 +182,18 @@ class StorageService:
 
         return None
 
+    def _build_image_url(
+        self, base_url: str, image_id: str, api_key: Optional[str] = None
+    ) -> str:
+        """Build image URL, optionally including api_key for direct access."""
+        url = f"{base_url}/images/{image_id}"
+        if api_key:
+            url = f"{url}?api_key={api_key}"
+        return url
+
     async def save_image(
-        self, item_id: str, file: UploadFile, base_url: str, user_id: Optional[UUID] = None
+        self, item_id: str, file: UploadFile, base_url: str,
+        user_id: Optional[UUID] = None, api_key: Optional[str] = None
     ) -> ImageInfo:
         item_dir = self._get_item_dir(item_id, user_id=user_id)
 
@@ -245,7 +255,7 @@ class StorageService:
             image_id=image_id,
             item_id=item_id,
             filename=original_filename,
-            url=f"{base_url}/images/{image_id}",
+            url=self._build_image_url(base_url, image_id, api_key),
         )
 
     def get_image_path(self, image_id: str) -> Optional[tuple[Path, str]]:
@@ -276,7 +286,8 @@ class StorageService:
         return search_in_dir(self.images_dir)
 
     def list_images_for_item(
-        self, item_id: str, base_url: str, user_id: Optional[UUID] = None
+        self, item_id: str, base_url: str,
+        user_id: Optional[UUID] = None, api_key: Optional[str] = None
     ) -> list[ImageInfo]:
         if user_id:
             item_dir = self.images_dir / str(user_id) / item_id
@@ -315,7 +326,7 @@ class StorageService:
                             image_id=img_id,
                             item_id=item_id,
                             filename=filename,
-                            url=f"{base_url}/images/{img_id}",
+                            url=self._build_image_url(base_url, img_id, api_key),
                             crop_region=crop,
                         ))
 
@@ -325,7 +336,7 @@ class StorageService:
                         image_id=img_id,
                         item_id=item_id,
                         filename=filename,
-                        url=f"{base_url}/images/{img_id}",
+                        url=self._build_image_url(base_url, img_id, api_key),
                         crop_region=self._get_crop_region_from_file(item_id, img_id),
                     ))
 
@@ -345,7 +356,7 @@ class StorageService:
                     image_id=img_id,
                     item_id=item_id,
                     filename=filename,
-                    url=f"{base_url}/images/{img_id}",
+                    url=self._build_image_url(base_url, img_id, api_key),
                     crop_region=self.get_crop_region(item_id, img_id),
                 ))
 
@@ -355,7 +366,7 @@ class StorageService:
                 image_id=img_id,
                 item_id=item_id,
                 filename=filename,
-                url=f"{base_url}/images/{img_id}",
+                url=self._build_image_url(base_url, img_id, api_key),
                 crop_region=self.get_crop_region(item_id, img_id),
             ))
 

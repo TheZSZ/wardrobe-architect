@@ -7,10 +7,10 @@ DUMMY_ENV = API_KEY=dummy GOOGLE_SHEET_ID=dummy GOOGLE_SHEETS_CREDENTIALS_JSON='
 build:
 	@$(DUMMY_ENV) docker compose build
 
-# Run tests with coverage
+# Run tests with coverage (--user ensures htmlcov is owned by you, not root)
 test:
-	@$(DUMMY_ENV) docker compose run --rm test
-	@sudo chown -R $$(id -u):$$(id -g) htmlcov 2>/dev/null || true
+	@mkdir -p htmlcov
+	@$(DUMMY_ENV) docker compose run --rm --user $$(id -u):$$(id -g) test
 
 # Run flake8 linter
 lint:
