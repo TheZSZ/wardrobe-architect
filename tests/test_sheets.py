@@ -43,8 +43,13 @@ def sheets_service(settings, mock_worksheet, mock_db):
 
 
 class TestRowToItem:
+    # New layout: ID, Item, Category, Color, Fabric, Fit, Season,
+    #             Wash Temp, Dry Method, Color Group, Delicate, Separate, Notes, Care Notes
+
     def test_valid_row(self, sheets_service):
-        row = ["1", "Navy Shirt", "Tops", "Navy", "Slim", "All", "Notes here"]
+        # Full row with all columns
+        row = ["1", "Navy Shirt", "Tops", "Navy", "Cotton", "Slim", "All",
+               "cold", "tumble low", "darks", "FALSE", "FALSE", "Notes here", ""]
         item = sheets_service._row_to_item(row, 2)
 
         assert item is not None
@@ -55,16 +60,21 @@ class TestRowToItem:
         assert item.fit == "Slim"
         assert item.season == "All"
         assert item.notes == "Notes here"
+        assert item.wash_care is not None
+        assert item.wash_care.fabric == "Cotton"
 
     def test_row_without_notes(self, sheets_service):
-        row = ["2", "White Tee", "Tops", "White", "Regular", "Summer"]
+        # Minimal row with 7 columns (up to Season)
+        row = ["2", "White Tee", "Tops", "White", "", "Regular", "Summer"]
         item = sheets_service._row_to_item(row, 2)
 
         assert item is not None
         assert item.notes is None
 
     def test_row_with_empty_notes(self, sheets_service):
-        row = ["3", "Item", "Cat", "Color", "Fit", "Season", ""]
+        # Row with empty notes column (index 12)
+        row = ["3", "Item", "Cat", "Color", "", "Fit", "Season",
+               "", "", "", "", "", "", ""]
         item = sheets_service._row_to_item(row, 2)
 
         assert item is not None
@@ -76,12 +86,13 @@ class TestRowToItem:
         assert item is None
 
     def test_row_with_empty_id(self, sheets_service):
-        row = ["", "Item", "Cat", "Color", "Fit", "Season"]
+        row = ["", "Item", "Cat", "Color", "", "Fit", "Season"]
         item = sheets_service._row_to_item(row, 2)
         assert item is None
 
     def test_row_too_short(self, sheets_service):
-        row = ["1", "Item", "Cat"]
+        # Need at least 7 columns now (up to Season)
+        row = ["1", "Item", "Cat", "Color", "", "Fit"]
         item = sheets_service._row_to_item(row, 2)
         assert item is None
 

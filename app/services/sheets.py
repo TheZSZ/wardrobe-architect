@@ -16,21 +16,24 @@ SCOPES = [
 ]
 
 # Column mapping (1-indexed for gspread)
+# Layout: Item info → Wash care → Notes at end
 COLUMNS = {
+    # Item info
     "id": 1,
     "item": 2,
     "category": 3,
     "color": 4,
-    "fit": 5,
-    "season": 6,
-    "notes": 7,
-    # Wash care columns
-    "fabric": 8,
-    "wash_temp": 9,
-    "dry_method": 10,
-    "color_group": 11,
-    "delicate": 12,
-    "separate": 13,
+    "fabric": 5,
+    "fit": 6,
+    "season": 7,
+    # Wash care
+    "wash_temp": 8,
+    "dry_method": 9,
+    "color_group": 10,
+    "delicate": 11,
+    "separate": 12,
+    # Notes at end
+    "notes": 13,
     "care_notes": 14,
 }
 
@@ -80,14 +83,15 @@ class SheetsService:
         return None
 
     def _parse_wash_care(self, row: list) -> Optional[WashCare]:
-        """Parse wash care fields from row columns 8-14."""
-        # Check if any wash care data exists (0-indexed: col 8 = index 7)
-        fabric = str(row[7]).strip() if len(row) > 7 and row[7] else None
-        wash_temp = str(row[8]).strip() if len(row) > 8 and row[8] else None
-        dry_method = str(row[9]).strip() if len(row) > 9 and row[9] else None
-        color_group = str(row[10]).strip() if len(row) > 10 and row[10] else None
-        delicate = self._parse_bool(str(row[11])) if len(row) > 11 else None
-        separate = self._parse_bool(str(row[12])) if len(row) > 12 else None
+        """Parse wash care fields from row (0-indexed: fabric=4, wash_temp=7, etc.)."""
+        # New layout: ID, Item, Category, Color, Fabric, Fit, Season,
+        #             Wash Temp, Dry Method, Color Group, Delicate, Separate, Notes, Care Notes
+        fabric = str(row[4]).strip() if len(row) > 4 and row[4] else None
+        wash_temp = str(row[7]).strip() if len(row) > 7 and row[7] else None
+        dry_method = str(row[8]).strip() if len(row) > 8 and row[8] else None
+        color_group = str(row[9]).strip() if len(row) > 9 and row[9] else None
+        delicate = self._parse_bool(str(row[10])) if len(row) > 10 else None
+        separate = self._parse_bool(str(row[11])) if len(row) > 11 else None
         care_notes = str(row[13]).strip() if len(row) > 13 and row[13] else None
 
         # Only create WashCare if at least one field has data
@@ -105,37 +109,39 @@ class SheetsService:
         return None
 
     def _row_to_item(self, row: list, row_index: int) -> Optional[WardrobeItem]:
-        if len(row) < 6 or not row[0]:
+        if len(row) < 7 or not row[0]:
             return None
 
         wash_care = self._parse_wash_care(row)
 
+        # Layout: ID, Item, Category, Color, Fabric, Fit, Season, ..., Notes (12)
         return WardrobeItem(
             id=str(row[0]),
             item=str(row[1]) if len(row) > 1 else "",
             category=str(row[2]) if len(row) > 2 else "",
             color=str(row[3]) if len(row) > 3 else "",
-            fit=str(row[4]) if len(row) > 4 else "",
-            season=str(row[5]) if len(row) > 5 else "",
-            notes=str(row[6]) if len(row) > 6 and row[6] else None,
+            fit=str(row[5]) if len(row) > 5 else "",
+            season=str(row[6]) if len(row) > 6 else "",
+            notes=str(row[12]) if len(row) > 12 and row[12] else None,
             wash_care=wash_care,
         )
 
     def _row_to_dict(self, row: list) -> Optional[dict]:
         """Convert row to dict for DB sync."""
-        if len(row) < 6 or not row[0]:
+        if len(row) < 7 or not row[0]:
             return None
 
         wash_care = self._parse_wash_care(row)
 
+        # Layout: ID, Item, Category, Color, Fabric, Fit, Season, ..., Notes (12)
         return {
             'id': str(row[0]),
             'item': str(row[1]) if len(row) > 1 else "",
             'category': str(row[2]) if len(row) > 2 else "",
             'color': str(row[3]) if len(row) > 3 else "",
-            'fit': str(row[4]) if len(row) > 4 else "",
-            'season': str(row[5]) if len(row) > 5 else "",
-            'notes': str(row[6]) if len(row) > 6 and row[6] else None,
+            'fit': str(row[5]) if len(row) > 5 else "",
+            'season': str(row[6]) if len(row) > 6 else "",
+            'notes': str(row[12]) if len(row) > 12 and row[12] else None,
             'wash_care': wash_care.model_dump() if wash_care else None,
         }
 
@@ -201,27 +207,26 @@ class SheetsService:
         sheet = self._get_sheet()
         new_id = self._generate_next_id()
 
-        # Build wash care columns
         wc = item_data.wash_care
-        wash_care_cols = [
-            wc.fabric or "" if wc else "",
-            wc.wash_temp or "" if wc else "",
-            wc.dry_method or "" if wc else "",
-            wc.color_group or "" if wc else "",
-            self._bool_to_sheets(wc.delicate) if wc else "",
-            self._bool_to_sheets(wc.separate) if wc else "",
-            wc.notes or "" if wc else "",
-        ]
 
+        # Layout: ID, Item, Category, Color, Fabric, Fit, Season,
+        #         Wash Temp, Dry Method, Color Group, Delicate, Separate, Notes, Care Notes
         new_row = [
             new_id,
             item_data.item,
             item_data.category,
             item_data.color,
+            wc.fabric or "" if wc else "",
             item_data.fit,
             item_data.season,
+            wc.wash_temp or "" if wc else "",
+            wc.dry_method or "" if wc else "",
+            wc.color_group or "" if wc else "",
+            self._bool_to_sheets(wc.delicate) if wc else "",
+            self._bool_to_sheets(wc.separate) if wc else "",
             item_data.notes or "",
-        ] + wash_care_cols
+            wc.notes or "" if wc else "",
+        ]
 
         # Write to Sheets first (source of truth)
         sheet.append_row(new_row)
